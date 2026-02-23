@@ -16,39 +16,46 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "MinecraftAgent"
-      display_name: "Handy Hank - llama-3.3-70b"
-      model: *groq_llama3_3_70b_model
+      display_name: "Handy Hank - Claude Sonnet 4"
+      model: *claude_sonnet_model
       instruction: |
-        You are Handy Hank, the core builder in a 5-worker Minecraft crew coordinated by OrchestratorAgent.
-        High-level team objective: create useful, visible structures and services on the surface.
+        You are Handy Hank, the PRIMARY STRUCTURE BUILDER in a 5-worker Minecraft team.
+        
+        ## Your Role
+        You handle foundations, walls, and main structural elements. You work in the NORTH zone.
 
-        Priority and message discipline:
-        - The latest Orchestrator/SAM/user instruction is authoritative.
-        - Read recent chat before action and keep actions aligned with newest coordination message.
-        - If details are missing, choose practical defaults and continue instead of stalling.
+        ## HIGH-LEVEL TOOLS (Use These First!)
+        Prefer these powerful tools that do complex operations in one call:
+        - build_simple_house: Build complete house with walls, floor, roof, door, windows, lighting
+        - fill_region: Fill rectangular volumes with any block
+        - place_hollow_box: Create room shells (walls + floor + ceiling)
+        - place_wall: Build vertical walls between coordinates
+        - build_tower: Create towers (circular or square)
+        - teleport_to: Instant movement to coordinates
+        - fly-to: Fly directly to a position
 
-        Execution defaults:
-        - Surface-only by default; do not continue underground unless explicitly requested.
-        - Prefer nearby flat, solid ground; avoid water, snow, ice, and leaf tops.
-        - Assume creative mode for team tasks; do not run resource-gather loops.
-        - Keep actions coordinate-specific and verifiable.
+        ## Basic Tools (Use When Needed)
+        - get-position: Check your current location
+        - place-block: Place single blocks
+        - dig-block: Remove single blocks
+        - send-chat: Communicate with team
+        - read-chat: Check team messages
 
-        Required task protocol:
-        1. Startup checks: detect-gamemode, get-position, read-chat, list-inventory.
-        2. Announce intent with one concise send-chat update.
-        3. Execute visible world actions (place/dig/move) tied to explicit coordinates.
-        4. Verify key changes with get-block-info/get-position before reporting done.
-        5. Return concise handoff: what changed, key coordinates, blockers (if any).
+        ## Execution Protocol
+        1. Read chat for latest instructions
+        2. Get your position
+        3. Use HIGH-LEVEL tools for bulk operations
+        4. Verify with get-block-info if needed
+        5. Send ONE concise chat update when done
 
-        Reliability guardrails:
-        - Coordinates can arrive as numbers or numeric strings; use them consistently and avoid null fields.
-        - Never invent unknown coordinates; derive from tool output when possible.
-        - After 2 failed attempts on the same action, switch strategy and report best-effort progress.
-        - Max tool-call budget per request: 25.
-        - Always include at least one visible world action and one concise send-chat status per task.
+        ## Rules
+        - Surface-only building (no underground)
+        - Creative mode assumed (no resource gathering)
+        - Use coordinates from orchestrator instructions
+        - Max 15 tool calls per task
+        - Always send final status via send-chat
 
       tools:
-        # Minecraft MCP Server
         - tool_type: mcp
           connection_params:
             type: stdio
@@ -63,7 +70,6 @@ apps:
               - "HandyHank_l33"
             timeout: 60
 
-        # Built-in artifact tools
         - tool_type: builtin-group
           group_name: "artifact_management"
 
@@ -79,28 +85,20 @@ apps:
         enable_embed_resolution: true
         enable_artifact_content_instruction: true
 
-      # Agent Card (A2A protocol)
       agent_card:
         description: |
-          Handy Hank is the structure specialist in a five-worker build team. It controls
-          a Minecraft bot in real-time for movement, building, and coordinated construction tasks.
+          Handy Hank is the primary structure builder. Uses high-level tools like build_simple_house 
+          and fill_region for efficient construction. Handles foundations, walls, and main structures.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
-          - id: "minecraft_movement"
-            name: "Movement & Navigation"
-            description: "Move the bot to coordinates, look at positions, jump, or fly"
-          - id: "minecraft_building"
-            name: "Block Manipulation"
-            description: "Place blocks, dig blocks, find blocks, get block info"
-          - id: "minecraft_inventory"
-            name: "Inventory Management"
-            description: "List inventory, find items, equip items"
-          - id: "minecraft_communication"
-            name: "In-Game Chat"
-            description: "Send and read chat messages in the Minecraft world"
+          - id: "structure_building"
+            name: "Structure Building"
+            description: "Build complete structures using high-level tools like build_simple_house"
+          - id: "bulk_placement"
+            name: "Bulk Block Placement"
+            description: "Fill regions and create walls efficiently with fill_region and place_wall"
 
-      # Discovery & Communication
       agent_card_publishing:
         interval_seconds: 10
       agent_discovery:

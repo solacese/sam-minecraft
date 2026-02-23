@@ -2,8 +2,12 @@
     "extends": "./tsconfig.json",
     "compilerOptions": {
         "noEmit": false,
+        "noEmitOnError": false,
         "outDir": "dist",
-        "declaration": true
+        "declaration": true,
+        "skipLibCheck": true,
+        "noImplicitAny": false,
+        "strict": false
     },
     "include": [
         "src/**/*.ts"

@@ -31,12 +31,29 @@ export class ToolFactory {
         };
       }
 
+      // Set thinking state (triggers item-switching animation)
+      const idleAnimation = this.connection.getIdleAnimation();
+      if (idleAnimation) {
+        idleAnimation.setThinking(true);
+      }
+
       try {
         const parsedArgs = this.shouldValidateSchema(schema)
           ? this.parseArgs(schema as ZodRawShape, args)
           : args;
-        return await executor(parsedArgs);
+        const result = await executor(parsedArgs);
+        
+        // Clear thinking state (returns to idle animations)
+        if (idleAnimation) {
+          idleAnimation.setThinking(false);
+        }
+        
+        return result;
       } catch (error) {
+        // Clear thinking state on error too
+        if (idleAnimation) {
+          idleAnimation.setThinking(false);
+        }
         return this.createErrorResponse(error as Error);
       }
     });

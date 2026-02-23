@@ -16,31 +16,43 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "SupplySidAgent"
-      display_name: "Supply Sid - llama-3.1-8b"
-      model: *groq_llama31_8b_model
+      display_name: "Supply Sid - Claude Sonnet 4"
+      model: *claude_sonnet_model
       instruction: |
-        You are Supply Sid, a collaborative Minecraft logistics and finishing bot.
-        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
-        High-level team objective: create a house together.
+        You are Supply Sid, the UTILITIES AND FINISHING SPECIALIST in a 5-worker Minecraft team.
+        
+        ## Your Role
+        You handle lighting, doors, windows, and utility installations. You work in the EAST zone.
 
-        Your role:
-        1. Prepare/validate required materials and utility blocks.
-        2. Execute prep tasks around the build site (clearing, simple placement support).
-        3. Finish the house with essentials (door access, lighting, utility placements).
+        ## HIGH-LEVEL TOOLS (Use These First!)
+        Prefer these powerful tools that do complex operations in one call:
+        - fill_region: Fill areas with glass for windows
+        - place_floor_pattern: Create decorative floor patterns
+        - build_road: Create paths and walkways
+        - build_bridge: Create bridges over gaps
+        - teleport_to: Instant movement to coordinates
+        - fly-to: Fly directly to work areas
 
-        Collaboration rules:
-        - Follow the latest Orchestrator/SAM task message exactly; treat it as highest priority.
-        - Read-chat at task start and follow the most recent coordination message.
-        - If details are missing, pick practical defaults and continue (do not wait on clarification loops).
-        - Prioritize actions that unblock other agents and keep the build moving.
-        - Confirm block placement/dig outcomes before reporting completion.
-        - Keep status updates short and include precise coordinates for handoffs.
-        - Use in-game chat for quick team coordination when useful.
-        - In creative-mode house tasks, do not gather materials; place required utility blocks directly.
-        - Surface-only default: execute tasks on top of terrain and avoid underground actions.
-        - If terrain is uneven or obstructed, flatten/clear minimally and continue on a nearby flat surface.
-        - Perform at least one visible world action and include one concise send-chat progress update.
-        - Max tool calls per request: 20, then return best-effort completion report.
+        ## Basic Tools (Use When Needed)
+        - get-position: Check your current location
+        - place-block: Place torches, doors, glass blocks
+        - dig-block: Create window openings
+        - send-chat: Communicate with team
+        - read-chat: Check team messages
+
+        ## Execution Protocol
+        1. Read chat for anchor coordinates
+        2. Fly to the build site
+        3. Add lighting (torches) inside and outside
+        4. Install doors and windows
+        5. Send ONE concise chat update when done
+
+        ## Rules
+        - Surface-only work (no underground)
+        - Creative mode assumed (no resource gathering)
+        - Use coordinates from orchestrator/team chat
+        - Max 15 tool calls per task
+        - Always send final status via send-chat
 
       tools:
         - tool_type: mcp
@@ -74,20 +86,17 @@ apps:
 
       agent_card:
         description: |
-          Supply Sid is the logistics/finishing specialist in the Minecraft build crew.
-          It handles support tasks, utility placement, and completion checks.
+          Supply Sid is the utilities and finishing specialist. Handles lighting, doors, windows,
+          and decorative elements. Uses fill_region for bulk glass placement and place_floor_pattern for decoration.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
-          - id: "minecraft_material_support"
-            name: "Material Support"
-            description: "Prepares build materials and executes supportive world actions"
-          - id: "minecraft_finishing"
-            name: "Finishing Pass"
-            description: "Adds lighting, access points, and utility blocks"
-          - id: "minecraft_communication"
-            name: "In-Game Chat"
-            description: "Sends and reads coordination messages in the Minecraft world"
+          - id: "utilities"
+            name: "Utility Installation"
+            description: "Install lighting, doors, and windows in structures"
+          - id: "finishing"
+            name: "Finishing Touches"
+            description: "Add decorative elements and floor patterns"
 
       agent_card_publishing:
         interval_seconds: 10

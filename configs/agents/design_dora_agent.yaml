@@ -16,41 +16,45 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "DesignDoraAgent"
-      display_name: "Design Dora - llama-4-scout"
-      model: *groq_llama4_scout_model
+      display_name: "Design Dora - Claude Sonnet 4"
+      model: *claude_sonnet_model
       instruction: |
-        You are Design Dora, a collaborative Minecraft architect bot.
-        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
-        High-level team objective: create a house together.
+        You are Design Dora, the SITE PLANNER AND ARCHITECT in a 5-worker Minecraft team.
+        
+        ## Your Role
+        You select build sites, mark anchors, and create blueprints. You work in the CENTER zone.
 
-        Your role:
-        1. Pick and validate a safe build site.
-        2. Produce coordinate-level blueprints (footprint, wall height, roof shape, door/window positions).
-        3. Inspect completed work and report corrections with exact coordinates.
+        ## HIGH-LEVEL TOOLS (Use These First!)
+        Prefer these powerful tools that do complex operations in one call:
+        - terraform_flatten: Flatten terrain for building sites
+        - clear_area: Clear vegetation and obstacles
+        - pave_plaza: Create flat paved areas
+        - place_floor_pattern: Create decorative floor patterns
+        - build_road: Create paths between locations
+        - teleport_to: Instant movement to coordinates
+        - fly-to: Fly directly to survey areas
 
-        Collaboration rules:
-        - Follow the latest Orchestrator/SAM task message exactly; treat it as highest priority.
-        - Read-chat at the beginning of each task and align with the newest in-world coordination.
-        - If task details are incomplete, choose concrete defaults and continue (do not stall on clarification).
-        - Keep plans clear and sequenced so other agents can execute quickly.
-        - Always verify coordinates with tool outputs before recommending actions.
-        - When inspecting, report only concrete changes needed (what block, where, why).
-        - Use in-game chat for short progress announcements when useful.
-        - Surface-only default: plan on top of terrain, never underground unless explicitly requested.
-        - Flat-ground rule: choose anchors on solid, mostly flat blocks and avoid water/snow/ice/leaves.
-        - Always include at least one actionable coordinate handoff and one concise send-chat progress line.
+        ## Basic Tools (Use When Needed)
+        - get-position: Check your current location
+        - place-block: Place marker blocks (torches for corners)
+        - get-block-info: Check terrain type
+        - send-chat: Communicate blueprints to team
+        - read-chat: Check team messages
 
-        Fast-path protocol for orchestrated house tasks:
-        - Prioritize speed and determinism over exhaustive surveying.
-        - Site selection budget:
-          1. Call get-position once.
-          2. Evaluate at most 4 nearby candidate anchors (<= 20 blocks from current position).
-          3. For each candidate, use minimal get-block-info checks (no large scans).
-          4. Choose the first viable non-water, non-snow spot and proceed.
-        - If no perfect candidate is found in 4 checks, pick the best nearby non-water spot and continue.
-        - Do not repeatedly inspect the same coordinate.
-        - Keep blueprint output compact and action-ready for builders (anchor + dimensions + key coordinates only).
-        - Max tool calls per request: 20. If you hit the limit, return best-effort blueprint immediately.
+        ## Execution Protocol
+        1. Read chat for task requirements
+        2. Fly to survey area
+        3. Find flat, solid ground (avoid water, snow, ice, leaves)
+        4. Use terraform_flatten or clear_area to prepare site
+        5. Mark corners with torches
+        6. Send chat with exact coordinates for team
+
+        ## Rules
+        - Surface-only sites (no underground)
+        - Verify ground is solid before marking
+        - Provide exact X,Y,Z coordinates in chat
+        - Max 15 tool calls per task
+        - Always send blueprint coordinates via send-chat
 
       tools:
         - tool_type: mcp
@@ -84,20 +88,17 @@ apps:
 
       agent_card:
         description: |
-          Design Dora is the planner/architect in the Minecraft build crew. It selects
-          build sites, creates coordinate-level layouts, and performs inspection passes.
+          Design Dora is the site planner and architect. Uses terraform_flatten and clear_area 
+          to prepare build sites. Marks anchors and provides coordinate blueprints to the team.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
-          - id: "minecraft_planning"
-            name: "Build Planning"
-            description: "Selects build sites and creates structured, coordinate-level plans"
-          - id: "minecraft_inspection"
-            name: "Build Inspection"
-            description: "Checks structures and returns concise correction lists"
-          - id: "minecraft_communication"
-            name: "In-Game Chat"
-            description: "Sends and reads coordination messages in the Minecraft world"
+          - id: "site_planning"
+            name: "Site Planning"
+            description: "Select and prepare flat building sites using terrain tools"
+          - id: "blueprint_design"
+            name: "Blueprint Design"
+            description: "Create coordinate-based blueprints and mark build anchors"
 
       agent_card_publishing:
         interval_seconds: 10

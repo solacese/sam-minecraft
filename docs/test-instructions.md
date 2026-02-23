@@ -1,107 +1,201 @@
 # SAM + Minecraft Manual Test Instructions
 
-Use these prompts in the SAM WebUI (`http://127.0.0.1:8000`).
+Use these prompts in the SAM WebUI at `http://127.0.0.1:8000`.
 
-For a direct concurrent worker run from terminal:
+## Available Tools
+
+The MCP server provides these 10 tools:
+
+| Tool | Description |
+|------|-------------|
+| `get-position` | Get bot's current position |
+| `walk-to` | Walk to X,Z coordinates |
+| `look-around` | Survey surroundings |
+| `get-surface-height` | Find ground level at X,Z |
+| `place-block` | Place single block at X,Y,Z |
+| `build-decorated-house` | Build complete house with decorations |
+| `fill-region` | Fill rectangular volume |
+| `flatten-area` | Flatten terrain |
+| `send-chat` | Send chat message |
+| `plant-garden` | Create decorative garden |
+
+---
+
+## Test 1: Basic Connectivity
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Get your current position and look around to survey the area.
+```
+
+**Expected:**
+- `get-position` returns coordinates
+- `look-around` reports nearby blocks and entities
+
+---
+
+## Test 2: Surface Detection
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Find the surface height at coordinates x=100, z=100 and report the ground block type.
+```
+
+**Expected:**
+- `get-surface-height` returns Y level and block type (e.g., "grass_block")
+
+---
+
+## Test 3: Block Placement
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Get the surface height at x=50, z=50, then place a glowstone block one block above the surface there.
+```
+
+**Expected:**
+- Agent uses `get-surface-height` first
+- Then uses `place-block` with correct Y coordinate
+- Glowstone appears in the world
+
+---
+
+## Test 4: Build a House
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Build a decorated oak house at x=0, z=0.
+```
+
+**Expected:**
+- `build-decorated-house` creates a complete house
+- House has walls, peaked roof, door, windows, lanterns, flower boxes
+
+---
+
+## Test 5: Build Different House Styles
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Build a spruce style house at x=20, z=0 and a stone style house at x=40, z=0.
+```
+
+**Expected:**
+- Two houses built with different materials
+- Spruce house uses dark wood
+- Stone house uses stone bricks
+
+---
+
+## Test 6: Plant a Garden
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Plant a large garden (size 3) at x=0, z=20.
+```
+
+**Expected:**
+- `plant-garden` creates garden with flowers
+- Gravel path through center
+- Lantern posts at corners
+
+---
+
+## Test 7: Flatten Area
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Flatten a 20x20 area from x=-10,z=-10 to x=10,z=10 using grass_block.
+```
+
+**Expected:**
+- `flatten-area` levels the terrain
+- Area becomes flat at consistent Y level
+
+---
+
+## Test 8: Fill Region
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Create a stone platform by filling from x=60,y=64,z=60 to x=70,y=64,z=70 with stone_bricks.
+```
+
+**Expected:**
+- `fill-region` creates solid platform
+- Platform is 11x11 blocks of stone bricks
+
+---
+
+## Test 9: Chat Communication
+
+**Target agent:** `MinecraftAgent`
+
+**Prompt:**
+```
+Send a chat message saying "Hello from Handy Hank!"
+```
+
+**Expected:**
+- `send-chat` sends message
+- Message visible in Minecraft chat
+
+---
+
+## Test 10: Team Coordination
+
+**Target agent:** `OrchestratorAgent`
+
+**Prompt:**
+```
+Coordinate all workers to build a small village:
+- Handy Hank: Build an oak house at x=0, z=0
+- Design Dora: Flatten a plaza area at x=0, z=30
+- Build Bea: Build a spruce house at x=20, z=0
+- Supply Sid: Place lanterns around the plaza
+- Forest Finn: Plant a garden at x=-20, z=0
+
+Have each agent send a chat message when they complete their task.
+```
+
+**Expected:**
+- Orchestrator delegates to all 5 workers in parallel
+- Each worker completes their assigned task
+- Chat messages confirm completion
+- Village has 2 houses, flattened plaza, lanterns, and garden
+
+---
+
+## Validation Commands
+
+Check SAM logs for errors:
 
 ```bash
-sh /Users/raphaelcaillon/Documents/GitHub/sam-minecraft/run-house-team-parallel.sh
+# Look for tool call errors
+grep -i "error" sam.log | tail -20
+
+# Check agent activity
+grep "MinecraftAgent\|OrchestratorAgent" sam.log | tail -30
 ```
 
-## 0) Team orchestration objective
-Target agent: `OrchestratorAgent`
-Prompt:
-```text
-Coordinate Handy Hank, Design Dora, Supply Sid, Build Bea, and Forest Finn to build a simple house together. First return a concise execution plan, then begin execution.
-```
-Expected:
-- Orchestrator delegates across all five worker agents.
-- The team collaborates toward the shared house-building objective.
-- Each worker performs at least one visible world action and sends concise in-game progress.
-
-Quick validation command:
-```bash
-rg -n "RetriggerManager:gdk-task-|SubmitA2ATask:" /Users/raphaelcaillon/Documents/GitHub/sam-minecraft/sam.log | tail -n 40
-```
-
-## 0b) Recommended Village Ops objective (more reliable than full building)
-Target agent: `OrchestratorAgent`
-Prompt:
-```text
-Run a village service mission with all workers on surface only: find a flat village-adjacent anchor, place safety lighting, build a tiny kiosk/plaza, clean up nearby obstacles, and return a concise per-agent summary with coordinates.
-```
-Expected:
-- Orchestrator prefers village-style tasks.
-- No underground construction.
-- Final report includes per-agent coordinate handoffs.
-
-## 1) Connectivity and baseline state
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-Run startup sequence: detect-gamemode, get-position, list-inventory, then report results.
-```
-Expected:
-- Tool calls succeed without argument validation errors.
-- Bot reports current coordinates and gamemode.
-- Inventory includes starter build materials (for example `oak_planks`, `stone`, `glass`, `oak_door`).
-
-## 1b) Placement sanity check
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-Place one oak_planks on a nearby empty block with solid ground, verify with get-block-info, and report the exact coordinate placed.
-```
-Expected:
-- `place-block` succeeds.
-- `get-block-info` confirms `oak_planks` at the reported coordinate.
-
-## 2) Coordinate propagation (find -> inspect)
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-Find the nearest oak_log block, then run get-block-info on that exact x/y/z and report both outputs.
-```
-Expected:
-- `find-block` returns coordinates.
-- `get-block-info` succeeds using those coordinates.
-- No `Invalid tool arguments` for x/y/z.
-
-## 3) Coordinate propagation (find -> move -> look -> dig)
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-Find the nearest oak_log, move near it, look at it, then dig that exact block and report what changed.
-```
-Expected:
-- Movement and look calls succeed.
-- Dig call succeeds or returns a domain error (for example block already air), but not schema validation errors.
-
-## 4) Flight tool coordinate coercion
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-Fly to x=0 y=80 z=0, then get-position and report final position.
-```
-Expected:
-- `fly-to` and `get-position` both succeed.
-
-## 5) Furnace tool coordinate coercion
-Target agent: `MinecraftAgent`
-Prompt:
-```text
-At furnace coordinates x=0 y=64 z=0, try smelt-item with inputItem=iron_ore and fuelItem=coal. Report the exact result.
-```
-Expected:
-- Call is accepted by schema and handler.
-- Result is domain-specific (smelting starts, missing items, or no furnace), but no x/y/z validation error.
-
-## Log validation
-Check `/Users/raphaelcaillon/Documents/GitHub/sam-minecraft/sam.log` for coordinate validation failures:
+Check Minecraft server logs:
 
 ```bash
-rg -n "Invalid tool arguments:.*x|Invalid tool arguments:.*y|Invalid tool arguments:.*z" /Users/raphaelcaillon/Documents/GitHub/sam-minecraft/sam.log
+docker logs mc 2>&1 | tail -50
 ```
-
-Expected:
-- No new matches for MCP tool calls made during the tests above.

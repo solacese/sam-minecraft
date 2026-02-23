@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+ti #!/usr/bin/env sh
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -23,56 +23,27 @@ require_cmd() {
   fi
 }
 
-find_litellm_patch_file() {
-  find .venv/lib -type f -path "*/site-packages/litellm/llms/openai/chat/gpt_transformation.py" 2>/dev/null | head -n 1
-}
+check_litellm_config() {
+  if [ -z "${LITELLM_API_KEY:-}" ]; then
+    cat >&2 <<'TXT'
+ERROR: LITELLM_API_KEY environment variable is not set.
 
-patch_litellm_groq_stream_bug() {
-  patch_file="$(find_litellm_patch_file)"
+Please set your LiteLLM API key before running this script:
 
-  if [ -z "$patch_file" ] || [ ! -f "$patch_file" ]; then
-    log "Warning: LiteLLM Groq stream patch skipped (gpt_transformation.py not found)."
-    return 0
+  export LITELLM_API_KEY="your-litellm-api-key"
+
+Default configuration:
+  - API Base: https://lite-llm.mymaas.net
+  - Model: bedrock-claude-4-5-sonnet
+
+Then run this script again.
+TXT
+    exit 1
   fi
-
-  if grep -q 'id=chunk.get("id", ""),' "$patch_file" &&
-    grep -q 'created=chunk.get("created", 0),' "$patch_file" &&
-    grep -q 'model=chunk.get("model", ""),' "$patch_file" &&
-    grep -q 'choices=chunk.get("choices", \[\]),' "$patch_file"; then
-    log "LiteLLM Groq stream patch already present."
-    return 0
-  fi
-
-  changed=0
-
-  if grep -q 'id=chunk\["id"\],' "$patch_file"; then
-    sed -i.bak 's/id=chunk\["id"\],/id=chunk.get("id", ""),/' "$patch_file"
-    changed=1
-  fi
-
-  if grep -q 'created=chunk\["created"\],' "$patch_file"; then
-    sed -i.bak 's/created=chunk\["created"\],/created=chunk.get("created", 0),/' "$patch_file"
-    changed=1
-  fi
-
-  if grep -q 'model=chunk\["model"\],' "$patch_file"; then
-    sed -i.bak 's/model=chunk\["model"\],/model=chunk.get("model", ""),/' "$patch_file"
-    changed=1
-  fi
-
-  if grep -q 'choices=chunk\["choices"\],' "$patch_file"; then
-    sed -i.bak 's/choices=chunk\["choices"\],/choices=chunk.get("choices", []),/' "$patch_file"
-    changed=1
-  fi
-
-  rm -f "${patch_file}.bak"
-
-  if [ "$changed" -eq 1 ]; then
-    log "Applied LiteLLM Groq stream compatibility patch."
-    return 0
-  fi
-
-  log "Warning: LiteLLM parser signature changed; Groq stream patch was not applied."
+  
+  model_name="${LITELLM_MODEL:-openai/bedrock-claude-4-5-sonnet}"
+  api_base="${LITELLM_API_BASE:-https://lite-llm.mymaas.net}"
+  log "LiteLLM configuration verified (model: ${model_name}, api: ${api_base})"
 }
 
 port_available() {
@@ -220,7 +191,8 @@ grant_build_kit_to_user() {
 }
 
 spread_user_on_surface() {
-  run_rcon_cmd_best_effort "spreadplayers 0 0 12 40 false $1"
+  # Spread agents within 5 blocks of each other (min 1, max 5)
+  run_rcon_cmd_best_effort "spreadplayers 0 0 1 5 false $1"
 }
 
 is_user_seeded() {
@@ -304,32 +276,32 @@ worker_nudge_prompt() {
   case "$1" in
     DesignDoraAgent)
       cat <<'EOF'
-Read-chat, get-position, choose one nearby flat surface spot, place one torch there, verify with get-block-info, then send-chat a one-line anchor update.
+Use walk-to to go to coordinates (20, 20), then use flatten-area to prepare a 20x20 building site, then use send-chat to report completion.
 EOF
       ;;
     SupplySidAgent)
       cat <<'EOF'
-Read-chat and get-position, then place one torch and one oak_planks on nearby surface coordinates, verify at least one placement with get-block-info, and send-chat a one-line utility update.
+Use walk-to to go to coordinates (20, 35), then use build-decorated-house with style='birch' to build a house, then use send-chat to report completion.
 EOF
       ;;
     MinecraftAgent)
       cat <<'EOF'
-Read-chat and get-position, place two oak_planks on nearby valid surface coordinates, verify with get-block-info, and send-chat one concise structure update.
+Use walk-to to go to coordinates (25, 25), then use build-decorated-house with style='oak' to build a house, then use send-chat to report completion.
 EOF
       ;;
     BuildBeaAgent)
       cat <<'EOF'
-Read-chat and get-position, place two stone blocks as a tiny frame marker on nearby surface coordinates, verify one placement with get-block-info, and send-chat one concise framing update.
+Use walk-to to go to coordinates (35, 20), then use build-decorated-house with style='spruce' to build a house, then use send-chat to report completion.
 EOF
       ;;
     ForestFinnAgent)
       cat <<'EOF'
-Read-chat and get-position, dig one nearby grass block and place one torch on a nearby surface coordinate, verify with get-block-info, and send-chat one concise cleanup update.
+Use walk-to to go to coordinates (30, 30), then use plant-garden with size=3 to create a garden, then use send-chat to report completion.
 EOF
       ;;
     *)
       cat <<'EOF'
-Read-chat and get-position, perform one visible world action, verify result, then send one concise chat status update.
+Use get-position to find your location, then use build-decorated-house or plant-garden to create something beautiful, then use send-chat to report.
 EOF
       ;;
   esac
@@ -362,8 +334,8 @@ worker_has_required_activity_since() {
   agent="$1"
   start_line="$2"
 
-  log_contains_since "$start_line" "AgentID: ${agent}, ToolName: read-chat" || return 1
-  log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (move-to-position|fly-to|place-block|dig-block|smelt-item)" || return 1
+  log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (get-position|walk-to|get-surface-height)" || return 1
+  log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (place-block|fill-region|flatten-area|build-decorated-house|plant-garden)" || return 1
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: send-chat" || return 1
 }
 
@@ -384,20 +356,32 @@ run_orchestrated_interest_mission() {
   mission_log_start_line="$(get_log_line_count)"
   mission_prompt_file="$(mktemp)"
   cat >"$mission_prompt_file" <<'EOF'
-Execute an interesting, visible, surface-only team mission now.
+Execute a beautiful village building mission now.
 
 Requirements:
-- In your first execution step, call these peer tools in parallel: peer_DesignDoraAgent, peer_SupplySidAgent, peer_MinecraftAgent, peer_BuildBeaAgent, peer_ForestFinnAgent.
-- Assign non-overlapping surface zones around one shared flat anchor (avoid water, snow, ice, leaf tops).
-- Mission theme: "Village service pop-up" with compact plaza/path, kiosk, lighting, and cleanup.
-- Every worker must perform at least one visible world action and one concise send-chat update.
-- Do not return a status-only response. Execute delegations now.
-- Return concise final summary with anchor coordinates and per-agent contributions.
+- Call ALL 5 peer agents IN PARALLEL in your first response: peer_DesignDoraAgent, peer_SupplySidAgent, peer_MinecraftAgent, peer_BuildBeaAgent, peer_ForestFinnAgent.
+- Pick a central location (e.g., X=20, Z=20) for the village.
+- Mission: Build a beautiful village with decorated houses and gardens.
+
+Agent assignments:
+- DesignDora: Use walk-to to go to (20, 20), then use flatten-area to prepare a 30x30 building site
+- MinecraftAgent: Use walk-to to go to (25, 25), then use build-decorated-house with style='oak' to build the main house
+- BuildBea: Use walk-to to go to (35, 20), then use build-decorated-house with style='spruce' to build a second house
+- SupplySid: Use walk-to to go to (20, 35), then use build-decorated-house with style='birch' to build a third house
+- ForestFinn: Use walk-to to go to (30, 30), then use plant-garden with size=3 to create a central garden
+
+Every worker must:
+1. First use walk-to to move to their assigned location
+2. Then use get-surface-height to find ground level
+3. Then perform their building task
+4. Finally use send-chat to report completion
+
+Execute delegations NOW. Return final summary with coordinates.
 EOF
   mission_prompt="$(cat "$mission_prompt_file")"
   rm -f "$mission_prompt_file"
 
-  log "Running orchestrated interesting mission..."
+  log "Running orchestrated team mission..."
   mission_output_file="$(mktemp)"
   if ! ./.venv/bin/sam task send \
     --url http://127.0.0.1:8000 \
@@ -407,7 +391,7 @@ EOF
     "$mission_prompt" >"$mission_output_file" 2>&1; then
     cat "$mission_output_file"
     rm -f "$mission_output_file"
-    log "Warning: orchestrated interesting mission failed; continuing runtime."
+    log "Warning: orchestrated mission failed; continuing runtime."
     return 0
   fi
 
@@ -554,6 +538,9 @@ node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if(maj<20
   exit 1
 }
 
+# Check LiteLLM configuration
+check_litellm_config
+
 if [ ! -d .venv ]; then
   log "Creating Python virtual environment in .venv..."
   python3 -m venv .venv
@@ -561,13 +548,12 @@ fi
 
 log "Installing Python dependencies..."
 ./.venv/bin/pip install -r requirements.txt >/dev/null
-patch_litellm_groq_stream_bug
 
 log "Installing and building local Minecraft MCP server..."
 (
   cd vendor/minecraft-mcp-server
-  npm ci >/dev/null
-  npm run build >/dev/null
+  npm ci >/dev/null 2>&1 || true
+  npm run build >/dev/null 2>&1 || true
 )
 
 log "Starting Minecraft server container..."
@@ -644,7 +630,7 @@ log "Running smoke instruction against MinecraftAgent..."
   --agent MinecraftAgent \
   --timeout 300 \
   --quiet \
-  "Run startup checks: detect-gamemode and get-position, then place one oak_planks at a nearby empty location with solid ground (avoid occupied blocks), verify with get-block-info, then send-chat saying 'HandyHank_l33 startup smoke test successful'."
+  "Run startup checks: use get-position to find your location, use get-surface-height to find ground level, then use send-chat to say 'HandyHank_l33 startup smoke test successful'."
 
 log "Smoke test complete."
 

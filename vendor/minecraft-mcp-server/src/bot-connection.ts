@@ -2,6 +2,7 @@ import mineflayer from 'mineflayer';
 import pathfinderPkg from 'mineflayer-pathfinder';
 const { pathfinder, Movements } = pathfinderPkg;
 import minecraftData from 'minecraft-data';
+import { IdleAnimationManager } from './idle-animation.js';
 
 const SUPPORTED_MINECRAFT_VERSION = '1.21.10';
 
@@ -26,6 +27,7 @@ export class BotConnection {
   private isReconnecting = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly reconnectDelayMs: number;
+  private idleAnimation: IdleAnimationManager | null = null;
 
   constructor(config: BotConfig, callbacks: ConnectionCallbacks, reconnectDelayMs = 2000) {
     this.config = config;
@@ -72,6 +74,10 @@ export class BotConnection {
       const mcData = minecraftData(bot.version);
       const defaultMove = new Movements(bot, mcData);
       bot.pathfinder.setMovements(defaultMove);
+
+      // Start idle animations
+      this.idleAnimation = new IdleAnimationManager(bot);
+      this.idleAnimation.start();
 
       bot.chat('LLM-powered bot ready to receive instructions!');
       this.callbacks.onLog('info', `Bot connected successfully. Username: ${this.config.username}, Server: ${this.config.host}:${this.config.port}`);
@@ -186,7 +192,18 @@ export class BotConnection {
     return { connected: true };
   }
 
+  /**
+   * Get the idle animation manager (for setting thinking state)
+   */
+  getIdleAnimation(): IdleAnimationManager | null {
+    return this.idleAnimation;
+  }
+
   cleanup(): void {
+    if (this.idleAnimation) {
+      this.idleAnimation.stop();
+      this.idleAnimation = null;
+    }
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
     }
