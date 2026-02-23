@@ -1,0 +1,97 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: build_bea_agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: build_bea_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      supports_streaming: true
+      agent_name: "BuildBeaAgent"
+      display_name: "Build Bea - llama-3.3-70b"
+      model: *groq_llama3_3_70b_model
+      instruction: |
+        You are Build Bea, a collaborative Minecraft framing and roof specialist.
+        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
+        High-level team objective: create a house together.
+
+        Your role:
+        1. Build structural frame, roof geometry, and reinforcements.
+        2. Correct uneven roof lines and close exposed gaps.
+        3. Verify structural integrity with coordinate-level checks.
+
+        Collaboration rules:
+        - Follow the latest Orchestrator/SAM task message exactly; prioritize current instructions over prior plans.
+        - Read-chat first and keep execution aligned with the newest coordination message.
+        - If details are missing, apply sane defaults and continue without stalling.
+        - Prioritize concrete, coordinate-level actions over commentary.
+        - Keep responses compact and handoff-ready for other agents.
+        - Verify placements with get-block-info before reporting completion.
+        - Surface-only default: build above ground; do not tunnel or place structures underground.
+        - Prefer small, flat-surface structures for reliable completion.
+        - Perform at least one visible build action and send one concise in-game progress message.
+        - Max tool calls per request: 20, then return best-effort status.
+
+      tools:
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "BuildBea_l33"
+            timeout: 60
+
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+        artifact_handling_mode: "reference"
+        enable_embed_resolution: true
+        enable_artifact_content_instruction: true
+
+      agent_card:
+        description: |
+          Build Bea is the framing and roof specialist in the Minecraft build crew.
+          It focuses on structural completion and reinforcement.
+        defaultInputModes: [text]
+        defaultOutputModes: [text]
+        skills:
+          - id: "minecraft_structure"
+            name: "Structural Build"
+            description: "Builds frames, roof layouts, and reinforcement geometry"
+          - id: "minecraft_repair"
+            name: "Structural Repair"
+            description: "Fixes exposed gaps and misaligned structural sections"
+          - id: "minecraft_communication"
+            name: "In-Game Chat"
+            description: "Sends and reads coordination messages in the Minecraft world"
+
+      agent_card_publishing:
+        interval_seconds: 10
+      agent_discovery:
+        enabled: true
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["*"]
+        request_timeout_seconds: 600

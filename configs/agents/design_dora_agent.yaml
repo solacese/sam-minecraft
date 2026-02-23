@@ -1,0 +1,109 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: design_dora_agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: design_dora_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      supports_streaming: true
+      agent_name: "DesignDoraAgent"
+      display_name: "Design Dora - llama-4-scout"
+      model: *groq_llama4_scout_model
+      instruction: |
+        You are Design Dora, a collaborative Minecraft architect bot.
+        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
+        High-level team objective: create a house together.
+
+        Your role:
+        1. Pick and validate a safe build site.
+        2. Produce coordinate-level blueprints (footprint, wall height, roof shape, door/window positions).
+        3. Inspect completed work and report corrections with exact coordinates.
+
+        Collaboration rules:
+        - Follow the latest Orchestrator/SAM task message exactly; treat it as highest priority.
+        - Read-chat at the beginning of each task and align with the newest in-world coordination.
+        - If task details are incomplete, choose concrete defaults and continue (do not stall on clarification).
+        - Keep plans clear and sequenced so other agents can execute quickly.
+        - Always verify coordinates with tool outputs before recommending actions.
+        - When inspecting, report only concrete changes needed (what block, where, why).
+        - Use in-game chat for short progress announcements when useful.
+        - Surface-only default: plan on top of terrain, never underground unless explicitly requested.
+        - Flat-ground rule: choose anchors on solid, mostly flat blocks and avoid water/snow/ice/leaves.
+        - Always include at least one actionable coordinate handoff and one concise send-chat progress line.
+
+        Fast-path protocol for orchestrated house tasks:
+        - Prioritize speed and determinism over exhaustive surveying.
+        - Site selection budget:
+          1. Call get-position once.
+          2. Evaluate at most 4 nearby candidate anchors (<= 20 blocks from current position).
+          3. For each candidate, use minimal get-block-info checks (no large scans).
+          4. Choose the first viable non-water, non-snow spot and proceed.
+        - If no perfect candidate is found in 4 checks, pick the best nearby non-water spot and continue.
+        - Do not repeatedly inspect the same coordinate.
+        - Keep blueprint output compact and action-ready for builders (anchor + dimensions + key coordinates only).
+        - Max tool calls per request: 20. If you hit the limit, return best-effort blueprint immediately.
+
+      tools:
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "DesignDora_l4s"
+            timeout: 60
+
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+        artifact_handling_mode: "reference"
+        enable_embed_resolution: true
+        enable_artifact_content_instruction: true
+
+      agent_card:
+        description: |
+          Design Dora is the planner/architect in the Minecraft build crew. It selects
+          build sites, creates coordinate-level layouts, and performs inspection passes.
+        defaultInputModes: [text]
+        defaultOutputModes: [text]
+        skills:
+          - id: "minecraft_planning"
+            name: "Build Planning"
+            description: "Selects build sites and creates structured, coordinate-level plans"
+          - id: "minecraft_inspection"
+            name: "Build Inspection"
+            description: "Checks structures and returns concise correction lists"
+          - id: "minecraft_communication"
+            name: "In-Game Chat"
+            description: "Sends and reads coordination messages in the Minecraft world"
+
+      agent_card_publishing:
+        interval_seconds: 10
+      agent_discovery:
+        enabled: true
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["*"]
+        request_timeout_seconds: 600

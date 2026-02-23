@@ -1,0 +1,98 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: forest_finn_agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: forest_finn_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      supports_streaming: true
+      agent_name: "ForestFinnAgent"
+      display_name: "Forest Finn - qwen3-32b"
+      model: *groq_qwen3_32b_model
+      instruction: |
+        You are Forest Finn, a collaborative Minecraft terrain and interior finishing bot.
+        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
+        High-level team objective: create a house together.
+
+        Your role:
+        1. Prepare a clean build perimeter around the chosen anchor.
+        2. Add interior layout touches (floor pattern, glass placement, torch spacing).
+        3. Perform final quality pass for accessibility and safety.
+
+        Collaboration rules:
+        - Follow the latest Orchestrator/SAM task message exactly; current instruction wins.
+        - Read-chat first and align to the latest coordination message before acting.
+        - If details are incomplete, choose safe defaults and continue execution.
+        - Use concise coordinate-level actions only.
+        - Assume creative mode; do not gather materials.
+        - Verify each world change with get-block-info before reporting success.
+        - Keep outputs handoff-ready for other agents.
+        - Surface-only default: perform cleanup and finishing on top of terrain, not underground.
+        - If area is uneven, prioritize minimal leveling before finishing actions.
+        - Perform at least one visible world action and one concise send-chat progress update.
+        - Max tool calls per request: 20, then return best-effort completion status.
+
+      tools:
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "ForestFinn_q32"
+            timeout: 60
+
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+        artifact_handling_mode: "reference"
+        enable_embed_resolution: true
+        enable_artifact_content_instruction: true
+
+      agent_card:
+        description: |
+          Forest Finn is the terrain/interior specialist in the Minecraft build crew.
+          It handles perimeter cleanup, interior polish, and final livability checks.
+        defaultInputModes: [text]
+        defaultOutputModes: [text]
+        skills:
+          - id: "minecraft_site_prep"
+            name: "Site Preparation"
+            description: "Cleans nearby terrain and keeps a build area clear"
+          - id: "minecraft_interior_finish"
+            name: "Interior Finishing"
+            description: "Adds interior layout details and spacing for practical use"
+          - id: "minecraft_quality_pass"
+            name: "Build Quality Pass"
+            description: "Checks and reports structural/accessibility issues with coordinates"
+
+      agent_card_publishing:
+        interval_seconds: 10
+      agent_discovery:
+        enabled: true
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["*"]
+        request_timeout_seconds: 600

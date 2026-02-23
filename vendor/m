@@ -1,0 +1,155 @@
+import { z } from "zod";
+import mineflayer from 'mineflayer';
+import pathfinderPkg from 'mineflayer-pathfinder';
+const { goals } = pathfinderPkg;
+import { ToolFactory } from '../tool-factory.js';
+import { SolacePublisher } from './solace-publisher.js';
+import { Vec3 } from 'vec3';
+
+export function registerNavigationTools(factory: ToolFactory, getBot: () => mineflayer.Bot): void {
+  const solace = SolacePublisher.getInstance();
+  const getAgentId = () => getBot()?.username || 'unknown';
+
+  // pathfind_and_escort - Follow a player at a set distance
+  factory.registerTool(
+    "pathfind_and_escort",
+    "Follow a named player at a set distance using A* collision-aware pathfinding",
+    {
+      playerName: z.string().describe("Name of player to escort"),
+      distance: z.number().optional().describe("Distance to maintain (default: 3)"),
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const agentId = getAgentId();
+      
+      const playerName = params.playerName;
+      const distance = params.distance || 3;
+      
+      const target = bot.players[playerName];
+      if (!target || !target.entity) {
+        return factory.createErrorResponse(`Player ${playerName} not found`);
+      }
+
+      const targetPos = target.entity.position;
+      await bot.pathfinder.goto(new goals.GoalFollowEntity(target.entity, distance));
+
+      await solace.publishToolEvent('pathfind_and_escort', agentId, { playerName, distance, status: 'following' });
+      return factory.createResponse(`Now escorting ${playerName} at distance ${distance}`);
+    }
+  );
+
+  // patrol_route - Loop through waypoints
+  factory.registerTool(
+    "patrol_route",
+    "Loop indefinitely through a list of waypoints, publishing events at each stop",
+    {
+      waypoints: z.array(z.object({ x: z.number(), y: z.number(), z: z.number() })).describe("Array of waypoints"),
+      loop: z.boolean().optional().describe("Loop indefinitely (default: true)"),
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const agentId = getAgentId();
+      
+      const waypoints = params.waypoints;
+      const loop = params.loop !== false;
+      
+      let iterations = 0;
+      const maxIterations = loop ? 1000 : waypoints.length;
+
+      for (let i = 0; i < waypoints.length && iterations < maxIterations; i++) {
+        const wp = waypoints[i];
+        await bot.pathfinder.goto(new goals.GoalNear(wp.x, wp.y, wp.z, 2));
+        
+        await solace.publishAgentEvent('patrol_checkpoint', agentId, { waypointIndex: i, position: wp });
+        
+        iterations++;
+      }
+
+      await solace.publishToolEvent('patrol_route', agentId, { waypoints: waypoints.length, iterations, loop });
+      return factory.createResponse(`Patrolled through ${iterations} waypoints`);
+    }
+  );
+
+  // navigate_to_player - Find player and move to reach distance
+  factory.registerTool(
+    "navigate_to_player",
+    "Find a named player and move to within reach distance using pathfinding",
+    {
+      playerName: z.string().describe("Name of player to find"),
+      reachDistance: z.number().optional().describe("Distance to stop at (default: 2)"),
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const agentId = getAgentId();
+      
+      const playerName = params.playerName;
+      const reachDistance = params.reachDistance || 2;
+      
+      const target = bot.players[playerName];
+      if (!target || !target.entity) {
+        return factory.createErrorResponse(`Player ${playerName} not found`);
+      }
+
+      const targetPos = target.entity.position;
+      await bot.pathfinder.goto(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, reachDistance));
+
+      await solace.publishToolEvent('navigate_to_player', agentId, { playerName, reached: true });
+      return factory.createResponse(`Reached player ${playerName}`);
+    }
+  );
+
+  // return_to_base - Navigate to saved home coordinate
+  factory.registerTool(
+    "return_to_base",
+    "Navigate back to a saved home coordinate stored as a SAM artifact",
+    {
+      homeName: z.string().optional().describe("Home name (default: 'default')"),
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const agentId = getAgentId();
+      
+      // In practice, this would load from .sam/homes.json
+      // For now, return to spawn
+      const spawnPoint = bot.spawnPoint || bot.world.getSpawnPosition();
+      
+      if (spawnPoint) {
+        await bot.pathfinder.goto(new goals.GoalNear(spawnPoint.x, spawnPoint.y, spawnPoint.z, 2));
+      }
+
+      await solace.publishToolEvent('return_to_base', agentId, { homeName: params.homeName || 'default', status: 'arrived' });
+      return factory.createResponse(`Returned to base`);
+    }
+  );
+
+  // explore_cardinal - Move N blocks in cardinal direction
+  factory.registerTool(
+    "explore_cardinal",
+    "Move N blocks in a given cardinal direction, mapping terrain encountered",
+    {
+      direction: z.enum(['north', 'south', 'east', 'west']).describe("Direction to move"),
+      blocks: z.number().describe("Number of blocks to move"),
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const agentId = getAgentId();
+      
+      const direction = params.direction;
+      const blocks = Number(params.blocks);
+      
+      const dirVecs: Record<string, [number, number]> = {
+        north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0]
+      };
+      const [dx, dz] = dirVecs[direction];
+      
+      const startPos = bot.entity.position;
+      const endX = startPos.x + dx * blocks;
+      const endZ = startPos.z + dz * blocks;
+      
+      await bot.pathfinder.goto(new goals.GoalNear(endX, startPos.y, endZ, 1));
+
+      await solace.publishToolEvent('explore_cardinal', agentId, { direction, blocks, from: { x: startPos.x, z: startPos.z }, to: { x: endX, z: endZ } });
+      return factory.createResponse(`Explored ${blocks} blocks ${direction} to (${endX}, ${endZ})`);
+    }
+  );
+}

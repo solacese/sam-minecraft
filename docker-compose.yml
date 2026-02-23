@@ -1,0 +1,31 @@
+# docker-compose.yml
+services:
+  mc:
+    image: itzg/minecraft-server
+    tty: true
+    stdin_open: true
+    dns:
+      - "1.1.1.1"
+      - "8.8.8.8"
+    ports:
+      - "25565:25565"
+    environment:
+      TYPE: "VANILLA"
+      VERSION: "1.21.4"
+      EULA: "TRUE"
+      MEMORY: "2G"
+      SEED: "70276817384212"
+      LEVEL_TYPE: "minecraft:single_biome_surface"
+      GENERATOR_SETTINGS: '{"biome":"minecraft:plains"}'
+      MODE: "creative"
+      DIFFICULTY: "peaceful"
+      FORCE_GAMEMODE: "TRUE"
+      SPAWN_PROTECTION: "0"
+      OPS: "Noptus,noptus,raphaelcaillon"
+      ONLINE_MODE: "FALSE"   # Required for Mineflayer bot connection
+      ENABLE_RCON: "TRUE"
+      RCON_PASSWORD: "samdemo"
+    volumes:
+      - mc-data:/data
+volumes:
+  mc-data:

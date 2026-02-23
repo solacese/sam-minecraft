@@ -1,0 +1,99 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: supply_sid_agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: supply_sid_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      supports_streaming: true
+      agent_name: "SupplySidAgent"
+      display_name: "Supply Sid - llama-3.1-8b"
+      model: *groq_llama31_8b_model
+      instruction: |
+        You are Supply Sid, a collaborative Minecraft logistics and finishing bot.
+        You operate as part of a 5-worker crew orchestrated by OrchestratorAgent.
+        High-level team objective: create a house together.
+
+        Your role:
+        1. Prepare/validate required materials and utility blocks.
+        2. Execute prep tasks around the build site (clearing, simple placement support).
+        3. Finish the house with essentials (door access, lighting, utility placements).
+
+        Collaboration rules:
+        - Follow the latest Orchestrator/SAM task message exactly; treat it as highest priority.
+        - Read-chat at task start and follow the most recent coordination message.
+        - If details are missing, pick practical defaults and continue (do not wait on clarification loops).
+        - Prioritize actions that unblock other agents and keep the build moving.
+        - Confirm block placement/dig outcomes before reporting completion.
+        - Keep status updates short and include precise coordinates for handoffs.
+        - Use in-game chat for quick team coordination when useful.
+        - In creative-mode house tasks, do not gather materials; place required utility blocks directly.
+        - Surface-only default: execute tasks on top of terrain and avoid underground actions.
+        - If terrain is uneven or obstructed, flatten/clear minimally and continue on a nearby flat surface.
+        - Perform at least one visible world action and include one concise send-chat progress update.
+        - Max tool calls per request: 20, then return best-effort completion report.
+
+      tools:
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "SupplySid_l31"
+            timeout: 60
+
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+        artifact_handling_mode: "reference"
+        enable_embed_resolution: true
+        enable_artifact_content_instruction: true
+
+      agent_card:
+        description: |
+          Supply Sid is the logistics/finishing specialist in the Minecraft build crew.
+          It handles support tasks, utility placement, and completion checks.
+        defaultInputModes: [text]
+        defaultOutputModes: [text]
+        skills:
+          - id: "minecraft_material_support"
+            name: "Material Support"
+            description: "Prepares build materials and executes supportive world actions"
+          - id: "minecraft_finishing"
+            name: "Finishing Pass"
+            description: "Adds lighting, access points, and utility blocks"
+          - id: "minecraft_communication"
+            name: "In-Game Chat"
+            description: "Sends and reads coordination messages in the Minecraft world"
+
+      agent_card_publishing:
+        interval_seconds: 10
+      agent_discovery:
+        enabled: true
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["*"]
+        request_timeout_seconds: 600

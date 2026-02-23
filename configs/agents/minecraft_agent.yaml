@@ -1,0 +1,111 @@
+log:
+  stdout_log_level: INFO
+  log_file_level: DEBUG
+  log_file: minecraft_agent.log
+
+!include ../shared_config.yaml
+
+apps:
+  - name: minecraft_agent_app
+    app_base_path: .
+    app_module: solace_agent_mesh.agent.sac.app
+    broker:
+      <<: *broker_connection
+
+    app_config:
+      namespace: "${NAMESPACE}"
+      supports_streaming: true
+      agent_name: "MinecraftAgent"
+      display_name: "Handy Hank - llama-3.3-70b"
+      model: *groq_llama3_3_70b_model
+      instruction: |
+        You are Handy Hank, the core builder in a 5-worker Minecraft crew coordinated by OrchestratorAgent.
+        High-level team objective: create useful, visible structures and services on the surface.
+
+        Priority and message discipline:
+        - The latest Orchestrator/SAM/user instruction is authoritative.
+        - Read recent chat before action and keep actions aligned with newest coordination message.
+        - If details are missing, choose practical defaults and continue instead of stalling.
+
+        Execution defaults:
+        - Surface-only by default; do not continue underground unless explicitly requested.
+        - Prefer nearby flat, solid ground; avoid water, snow, ice, and leaf tops.
+        - Assume creative mode for team tasks; do not run resource-gather loops.
+        - Keep actions coordinate-specific and verifiable.
+
+        Required task protocol:
+        1. Startup checks: detect-gamemode, get-position, read-chat, list-inventory.
+        2. Announce intent with one concise send-chat update.
+        3. Execute visible world actions (place/dig/move) tied to explicit coordinates.
+        4. Verify key changes with get-block-info/get-position before reporting done.
+        5. Return concise handoff: what changed, key coordinates, blockers (if any).
+
+        Reliability guardrails:
+        - Coordinates can arrive as numbers or numeric strings; use them consistently and avoid null fields.
+        - Never invent unknown coordinates; derive from tool output when possible.
+        - After 2 failed attempts on the same action, switch strategy and report best-effort progress.
+        - Max tool-call budget per request: 25.
+        - Always include at least one visible world action and one concise send-chat status per task.
+
+      tools:
+        # Minecraft MCP Server
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "HandyHank_l33"
+            timeout: 60
+
+        # Built-in artifact tools
+        - tool_type: builtin-group
+          group_name: "artifact_management"
+
+      session_service:
+        type: "memory"
+        default_behavior: "PERSISTENT"
+
+      artifact_service:
+        type: "filesystem"
+        base_path: "/tmp/samv2"
+        artifact_scope: namespace
+        artifact_handling_mode: "reference"
+        enable_embed_resolution: true
+        enable_artifact_content_instruction: true
+
+      # Agent Card (A2A protocol)
+      agent_card:
+        description: |
+          Handy Hank is the structure specialist in a five-worker build team. It controls
+          a Minecraft bot in real-time for movement, building, and coordinated construction tasks.
+        defaultInputModes: [text]
+        defaultOutputModes: [text]
+        skills:
+          - id: "minecraft_movement"
+            name: "Movement & Navigation"
+            description: "Move the bot to coordinates, look at positions, jump, or fly"
+          - id: "minecraft_building"
+            name: "Block Manipulation"
+            description: "Place blocks, dig blocks, find blocks, get block info"
+          - id: "minecraft_inventory"
+            name: "Inventory Management"
+            description: "List inventory, find items, equip items"
+          - id: "minecraft_communication"
+            name: "In-Game Chat"
+            description: "Send and read chat messages in the Minecraft world"
+
+      # Discovery & Communication
+      agent_card_publishing:
+        interval_seconds: 10
+      agent_discovery:
+        enabled: true
+      inter_agent_communication:
+        allow_list: []
+        deny_list: ["*"]
+        request_timeout_seconds: 600
