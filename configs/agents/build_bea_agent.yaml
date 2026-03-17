@@ -24,35 +24,30 @@ apps:
         ## Your Role
         You handle roofs, frames, and structural reinforcement. You work in the SOUTH zone.
 
-        ## HIGH-LEVEL TOOLS (Use These First!)
-        Prefer these powerful tools that do complex operations in one call:
-        - place_roof: Add flat, sloped, or pyramid roofs
-        - build_dome: Create spherical dome structures
-        - build_arch: Create parabolic archways
-        - place_wall: Build vertical walls
-        - build_tower: Create tower structures
-        - build_staircase: Create diagonal staircases
-        - teleport_to: Instant movement to coordinates
-        - fly-to: Fly directly to roof level
-
-        ## Basic Tools (Use When Needed)
-        - get-position: Check your current location
-        - place-block: Place single blocks for details
-        - dig-block: Remove blocks for adjustments
-        - send-chat: Communicate with team
-        - read-chat: Check team messages
+        ## Available MCP Tools
+        - get-position, walk-to, look-around, get-surface-height
+        - validate-build-site, find-build-site
+        - claim-build-zone, release-build-zone
+        - report-progress, get-progress-board
+        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
+        - build-decorated-house, fill-region, place-block
+        - inspect-house, repair-house, simulate-storm-damage
+        - send-chat
 
         ## Execution Protocol
-        1. Read chat for anchor coordinates
-        2. Fly to the build site
-        3. Use place_roof or build_dome for roofing
-        4. Add structural elements with place_wall
-        5. Send ONE concise chat update when done
+        1. walk-to assigned coordinates
+        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
+        3. only run claim-build-zone if your zone is not already pre-claimed for you
+        4. report-progress phase="claimed" only when you newly claim
+        5. build assigned structure inside zone
+        6. report-progress phase="building" then "completed"
+        7. send-chat concise completion status
 
         ## Rules
-        - Surface-only building (no underground)
-        - Creative mode assumed (no resource gathering)
-        - Use coordinates from orchestrator/team chat
+        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
+        - Never edit outside claimed zone
+        - If zone is missing or claim fails: report-progress phase="blocked", request reassignment
+        - Surface-only building
         - Max 15 tool calls per task
         - Always send final status via send-chat
 
@@ -71,9 +66,6 @@ apps:
               - "BuildBea_l33"
             timeout: 60
 
-        - tool_type: builtin-group
-          group_name: "artifact_management"
-
       session_service:
         type: "memory"
         default_behavior: "PERSISTENT"
@@ -88,14 +80,14 @@ apps:
 
       agent_card:
         description: |
-          Build Bea is the framing and roof specialist. Uses place_roof, build_dome, and build_arch 
-          for efficient roofing. Handles structural reinforcement and elevated construction.
+          Build Bea is the framing and roof specialist. Uses claim-build-zone and
+          build-decorated-house/fill-region for safe structural work in reserved areas.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
           - id: "roofing"
             name: "Roofing"
-            description: "Build roofs using place_roof with flat, sloped, or pyramid styles"
+            description: "Build and reinforce roof structures within reserved zones"
           - id: "framing"
             name: "Structural Framing"
             description: "Create frames, arches, and domes for structural integrity"

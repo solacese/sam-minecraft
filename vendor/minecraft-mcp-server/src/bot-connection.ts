@@ -72,7 +72,20 @@ export class BotConnection {
       this.callbacks.onLog('info', 'Bot spawned in world');
 
       const mcData = minecraftData(bot.version);
-      const defaultMove = new Movements(bot, mcData);
+      const defaultMove = new Movements(bot, mcData) as any;
+      defaultMove.canDig = false;
+      defaultMove.allow1by1towers = false;
+      defaultMove.allowParkour = false;
+      defaultMove.allowSprinting = false;
+      defaultMove.scafoldingBlocks = [];
+      const waterId = mcData.blocksByName.water?.id;
+      const lavaId = mcData.blocksByName.lava?.id;
+      if (waterId && defaultMove.blocksToAvoid instanceof Set) {
+        defaultMove.blocksToAvoid.add(waterId);
+      }
+      if (lavaId && defaultMove.blocksToAvoid instanceof Set) {
+        defaultMove.blocksToAvoid.add(lavaId);
+      }
       bot.pathfinder.setMovements(defaultMove);
 
       // Start idle animations

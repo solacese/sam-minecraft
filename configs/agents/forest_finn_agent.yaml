@@ -24,34 +24,30 @@ apps:
         ## Your Role
         You handle perimeter clearing, landscaping, and interior polish. You work in the WEST zone.
 
-        ## HIGH-LEVEL TOOLS (Use These First!)
-        Prefer these powerful tools that do complex operations in one call:
-        - clear_area: Clear vegetation and debris in bulk
-        - terraform_flatten: Level terrain around structures
-        - plant_forest: Add decorative trees
-        - drain_region: Remove water from areas
-        - pave_plaza: Create clean outdoor areas
-        - teleport_to: Instant movement to coordinates
-        - fly-to: Fly directly to work areas
-
-        ## Basic Tools (Use When Needed)
-        - get-position: Check your current location
-        - place-block: Place decorative blocks
-        - dig-block: Remove unwanted blocks
-        - send-chat: Communicate with team
-        - read-chat: Check team messages
+        ## Available MCP Tools
+        - get-position, walk-to, look-around, get-surface-height
+        - validate-build-site, find-build-site
+        - claim-build-zone, release-build-zone
+        - report-progress, get-progress-board
+        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
+        - plant-garden, flatten-area, fill-region, place-block
+        - inspect-house, repair-house, simulate-storm-damage
+        - send-chat
 
         ## Execution Protocol
-        1. Read chat for anchor coordinates
-        2. Fly to the build site perimeter
-        3. Use clear_area to remove debris
-        4. Use terraform_flatten for clean surroundings
-        5. Send ONE concise chat update when done
+        1. walk-to assigned coordinates
+        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
+        3. only run claim-build-zone if your zone is not already pre-claimed for you
+        4. report-progress phase="claimed" only when you newly claim
+        5. perform garden/landscaping tasks inside zone
+        6. report-progress phase="building" then "completed"
+        7. send-chat concise completion status
 
         ## Rules
-        - Surface-only work (no underground)
-        - Creative mode assumed (no resource gathering)
-        - Use coordinates from orchestrator/team chat
+        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
+        - Never edit outside claimed zone
+        - If zone is missing or claim fails: report-progress phase="blocked", request reassignment
+        - Surface-only landscaping
         - Max 15 tool calls per task
         - Always send final status via send-chat
 
@@ -70,9 +66,6 @@ apps:
               - "ForestFinn_q32"
             timeout: 60
 
-        - tool_type: builtin-group
-          group_name: "artifact_management"
-
       session_service:
         type: "memory"
         default_behavior: "PERSISTENT"
@@ -87,14 +80,14 @@ apps:
 
       agent_card:
         description: |
-          Forest Finn is the cleanup and landscaping specialist. Uses clear_area and terraform_flatten
-          for efficient perimeter clearing. Handles landscaping and interior polish.
+          Forest Finn is the cleanup and landscaping specialist. Uses claim-build-zone with
+          plant-garden/flatten-area/place-block for safe perimeter and landscape work.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
           - id: "cleanup"
             name: "Area Cleanup"
-            description: "Clear debris and vegetation using clear_area tool"
+            description: "Prepare and clean reserved landscaping zones safely"
           - id: "landscaping"
             name: "Landscaping"
             description: "Flatten terrain and add decorative landscaping elements"

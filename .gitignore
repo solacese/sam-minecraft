@@ -30,6 +30,8 @@ vendor/minecraft-mcp-server/dist/
 sam.log
 *.db
 .sam/
+*.log
+*-runtime.log
 
 # Environment
 .env

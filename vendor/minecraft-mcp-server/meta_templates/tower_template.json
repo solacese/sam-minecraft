@@ -1,0 +1,96 @@
+{
+  "templateType": "tower",
+  "description": "Template for vertical tower structures (observation towers, bell towers, etc.)",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the tower"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code (e.g., us, fr, jp)"
+    },
+    "height": {
+      "type": "enum",
+      "required": true,
+      "values": ["short", "medium", "tall", "supertall"],
+      "description": "Overall height category"
+    },
+    "topStructure": {
+      "type": "enum",
+      "required": true,
+      "values": ["spire", "dome", "flat", "antenna", "observation_deck"],
+      "description": "Type of structure at the top"
+    },
+    "baseShape": {
+      "type": "enum",
+      "required": true,
+      "values": ["square", "circular", "octagonal", "rectangular"],
+      "description": "Shape of the tower base"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "description": "Material style selection",
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "heightMapping": {
+      "short": {"minHeight": 20, "maxHeight": 35, "tiers": 2},
+      "medium": {"minHeight": 35, "maxHeight": 60, "tiers": 3},
+      "tall": {"minHeight": 60, "maxHeight": 100, "tiers": 4},
+      "supertall": {"minHeight": 100, "maxHeight": 160, "tiers": 5}
+    },
+    "baseShapeMapping": {
+      "square": {"width": 15, "depth": 15},
+      "circular": {"width": 17, "depth": 17},
+      "octagonal": {"width": 19, "depth": 19},
+      "rectangular": {"width": 13, "depth": 21}
+    },
+    "componentStructure": [
+      {
+        "id": "site_prep",
+        "role": "site",
+        "heightPercent": 5,
+        "scaleMultiplier": 2.0
+      },
+      {
+        "id": "foundation",
+        "role": "foundation",
+        "heightPercent": 10,
+        "scaleMultiplier": 1.5
+      },
+      {
+        "id": "lower_section",
+        "role": "walls",
+        "heightPercent": 35,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "mid_section",
+        "role": "walls",
+        "heightPercent": 30,
+        "scaleMultiplier": 0.85
+      },
+      {
+        "id": "upper_section",
+        "role": "walls",
+        "heightPercent": 15,
+        "scaleMultiplier": 0.7
+      },
+      {
+        "id": "top_structure",
+        "role": "ornament",
+        "heightPercent": 5,
+        "scaleMultiplier": 0.5
+      }
+    ]
+  }
+}

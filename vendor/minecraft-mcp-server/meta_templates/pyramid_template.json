@@ -1,0 +1,113 @@
+{
+  "templateType": "pyramid",
+  "description": "Template for pyramid and monumental structures",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the pyramid"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "pyramidStyle": {
+      "type": "enum",
+      "required": true,
+      "values": ["smooth", "stepped", "terraced"],
+      "description": "Style of pyramid sides"
+    },
+    "size": {
+      "type": "enum",
+      "required": true,
+      "values": ["small", "medium", "large", "massive"],
+      "description": "Overall size of pyramid"
+    },
+    "hasTemple": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether pyramid has temple at top"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "sizeMapping": {
+      "small": {
+        "baseWidth": 30,
+        "height": 20,
+        "slopeRatio": 1.5
+      },
+      "medium": {
+        "baseWidth": 50,
+        "height": 35,
+        "slopeRatio": 1.43
+      },
+      "large": {
+        "baseWidth": 80,
+        "height": 55,
+        "slopeRatio": 1.45
+      },
+      "massive": {
+        "baseWidth": 120,
+        "height": 80,
+        "slopeRatio": 1.5
+      }
+    },
+    "styleMapping": {
+      "smooth": {
+        "layers": 1,
+        "stepHeight": 0
+      },
+      "stepped": {
+        "layers": 5,
+        "stepHeight": 3
+      },
+      "terraced": {
+        "layers": 7,
+        "stepHeight": 2
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "plaza_base",
+        "role": "site",
+        "heightPercent": 3,
+        "scaleMultiplier": 2.0
+      },
+      {
+        "id": "pyramid_base",
+        "role": "foundation",
+        "heightPercent": 15,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "pyramid_main",
+        "role": "walls",
+        "heightPercent": 70,
+        "scaleMultiplier": 0.7
+      },
+      {
+        "id": "temple_top",
+        "role": "ornament",
+        "heightPercent": 12,
+        "scaleMultiplier": 0.3,
+        "conditional": "hasTemple"
+      },
+      {
+        "id": "entrance",
+        "role": "ornament",
+        "heightPercent": 10,
+        "scaleMultiplier": 0.4
+      }
+    ]
+  }
+}

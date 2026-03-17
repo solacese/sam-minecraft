@@ -1,0 +1,101 @@
+{
+  "templateType": "castle",
+  "description": "Template for fortified structures (castles, fortresses, citadels)",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the castle"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "fortificationLevel": {
+      "type": "enum",
+      "required": true,
+      "values": ["light", "medium", "heavy"],
+      "description": "Level of fortification"
+    },
+    "towerCount": {
+      "type": "enum",
+      "required": true,
+      "values": ["2", "4", "6", "8"],
+      "description": "Number of corner/wall towers"
+    },
+    "hasKeep": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether castle has a central keep"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "fortificationMapping": {
+      "light": {
+        "wallHeight": 8,
+        "wallThickness": 2,
+        "towerHeight": 15
+      },
+      "medium": {
+        "wallHeight": 12,
+        "wallThickness": 3,
+        "towerHeight": 22
+      },
+      "heavy": {
+        "wallHeight": 16,
+        "wallThickness": 4,
+        "towerHeight": 30
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "outer_moat",
+        "role": "site",
+        "heightPercent": 5,
+        "scaleMultiplier": 3.0
+      },
+      {
+        "id": "outer_walls",
+        "role": "walls",
+        "heightPercent": 50,
+        "scaleMultiplier": 2.0
+      },
+      {
+        "id": "corner_towers",
+        "role": "walls",
+        "heightPercent": 75,
+        "scaleMultiplier": 0.8,
+        "multiplicity": "towerCount"
+      },
+      {
+        "id": "central_keep",
+        "role": "walls",
+        "heightPercent": 90,
+        "scaleMultiplier": 0.6,
+        "conditional": "hasKeep"
+      },
+      {
+        "id": "courtyard",
+        "role": "foundation",
+        "heightPercent": 5,
+        "scaleMultiplier": 1.5
+      },
+      {
+        "id": "gatehouse",
+        "role": "ornament",
+        "heightPercent": 60,
+        "scaleMultiplier": 1.0
+      }
+    ]
+  }
+}

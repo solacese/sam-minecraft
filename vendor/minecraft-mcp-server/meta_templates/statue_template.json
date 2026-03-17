@@ -1,0 +1,131 @@
+{
+  "templateType": "statue",
+  "description": "Template for monuments, statues, and sculptural landmarks",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the statue"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "figureType": {
+      "type": "enum",
+      "required": true,
+      "values": ["human", "religious", "abstract", "animal"],
+      "description": "Type of figure represented"
+    },
+    "pose": {
+      "type": "enum",
+      "required": true,
+      "values": ["standing", "sitting", "arms_raised", "arms_outstretched", "dynamic"],
+      "description": "Pose of the statue"
+    },
+    "scale": {
+      "type": "enum",
+      "required": true,
+      "values": ["life_size", "monumental", "colossal"],
+      "description": "Scale of the statue"
+    },
+    "hasPedestal": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether statue has a pedestal base"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "scaleMapping": {
+      "life_size": {
+        "height": 15,
+        "width": 7
+      },
+      "monumental": {
+        "height": 35,
+        "width": 15
+      },
+      "colossal": {
+        "height": 60,
+        "width": 25
+      }
+    },
+    "poseMapping": {
+      "standing": {
+        "armPosition": "down",
+        "legSpread": "narrow"
+      },
+      "sitting": {
+        "armPosition": "lap",
+        "legSpread": "none"
+      },
+      "arms_raised": {
+        "armPosition": "up",
+        "legSpread": "narrow"
+      },
+      "arms_outstretched": {
+        "armPosition": "horizontal",
+        "legSpread": "narrow"
+      },
+      "dynamic": {
+        "armPosition": "varied",
+        "legSpread": "wide"
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "plaza",
+        "role": "site",
+        "heightPercent": 3,
+        "scaleMultiplier": 3.0
+      },
+      {
+        "id": "pedestal",
+        "role": "foundation",
+        "heightPercent": 20,
+        "scaleMultiplier": 1.2,
+        "conditional": "hasPedestal"
+      },
+      {
+        "id": "base_feet",
+        "role": "foundation",
+        "heightPercent": 10,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "legs",
+        "role": "walls",
+        "heightPercent": 25,
+        "scaleMultiplier": 0.8
+      },
+      {
+        "id": "torso",
+        "role": "walls",
+        "heightPercent": 30,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "arms",
+        "role": "ornament",
+        "heightPercent": 20,
+        "scaleMultiplier": 0.5
+      },
+      {
+        "id": "head",
+        "role": "ornament",
+        "heightPercent": 15,
+        "scaleMultiplier": 0.9
+      }
+    ]
+  }
+}

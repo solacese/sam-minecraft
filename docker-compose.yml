@@ -14,14 +14,15 @@ services:
       VERSION: "1.21.4"
       EULA: "TRUE"
       MEMORY: "2G"
-      SEED: "70276817384212"
+      SEED: "3118288038295769423"
       LEVEL_TYPE: "minecraft:single_biome_surface"
       GENERATOR_SETTINGS: '{"biome":"minecraft:plains"}'
       MODE: "creative"
       DIFFICULTY: "peaceful"
       FORCE_GAMEMODE: "TRUE"
       SPAWN_PROTECTION: "0"
-      OPS: "Noptus,noptus,raphaelcaillon"
+      # Keep only resolvable Java usernames; unresolved names can stop container startup.
+      OPS: "Noptus,noptus"
       ONLINE_MODE: "FALSE"   # Required for Mineflayer bot connection
       ENABLE_RCON: "TRUE"
       RCON_PASSWORD: "samdemo"

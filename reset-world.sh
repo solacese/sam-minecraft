@@ -3,12 +3,12 @@
 #
 # Usage:
 #   ./reset-world.sh              # Reset with same seed
-#   ./reset-world.sh 12345        # Reset with new seed
-#   ./reset-world.sh random       # Reset with random seed
+#   ./reset-world.sh 12345        # Reset with specific numeric seed
+#   ./reset-world.sh auto         # Generate and persist a new 64-bit seed
 
 set -e
 
-SEED="${1:-}"
+SEED_INPUT="${1:-}"
 COMPOSE_FILE="docker-compose.yml"
 
 echo "🔄 Resetting Minecraft world..."
@@ -22,16 +22,28 @@ echo "🗑️  Deleting world data..."
 docker volume rm sam-minecraft_mc-data 2>/dev/null || true
 
 # Handle seed change
-if [ -n "$SEED" ]; then
-    if [ "$SEED" = "random" ]; then
-        # Generate random seed
-        NEW_SEED=$((RANDOM * RANDOM))
-        echo "🎲 Using random seed: $NEW_SEED"
+if [ -n "$SEED_INPUT" ]; then
+    if [ "$SEED_INPUT" = "auto" ]; then
+        # Generate a new unsigned 64-bit seed and persist it.
+        NEW_SEED="$(python3 - <<'PY'
+import random
+print(random.randint(0, 2**63 - 1))
+PY
+)"
+        echo "🎲 Generated new seed: $NEW_SEED"
     else
-        NEW_SEED="$SEED"
+        if ! printf '%s' "$SEED_INPUT" | grep -Eq '^[0-9]+$'; then
+            echo "❌ Invalid seed: '$SEED_INPUT'"
+            echo "Use either:"
+            echo "  ./reset-world.sh"
+            echo "  ./reset-world.sh auto"
+            echo "  ./reset-world.sh <numeric-seed>"
+            exit 1
+        fi
+        NEW_SEED="$SEED_INPUT"
         echo "🌱 Using seed: $NEW_SEED"
     fi
-    
+
     # Update docker-compose.yml with new seed
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
@@ -40,7 +52,7 @@ if [ -n "$SEED" ]; then
         # Linux
         sed -i "s/SEED: \"[^\"]*\"/SEED: \"$NEW_SEED\"/" "$COMPOSE_FILE"
     fi
-    echo "✅ Updated seed in docker-compose.yml"
+    echo "✅ Updated seed in docker-compose.yml: $NEW_SEED"
 else
     echo "🌱 Keeping existing seed"
 fi

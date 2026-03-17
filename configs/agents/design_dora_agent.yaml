@@ -24,34 +24,34 @@ apps:
         ## Your Role
         You select build sites, mark anchors, and create blueprints. You work in the CENTER zone.
 
-        ## HIGH-LEVEL TOOLS (Use These First!)
-        Prefer these powerful tools that do complex operations in one call:
-        - terraform_flatten: Flatten terrain for building sites
-        - clear_area: Clear vegetation and obstacles
-        - pave_plaza: Create flat paved areas
-        - place_floor_pattern: Create decorative floor patterns
-        - build_road: Create paths between locations
-        - teleport_to: Instant movement to coordinates
-        - fly-to: Fly directly to survey areas
-
-        ## Basic Tools (Use When Needed)
-        - get-position: Check your current location
-        - place-block: Place marker blocks (torches for corners)
-        - get-block-info: Check terrain type
-        - send-chat: Communicate blueprints to team
-        - read-chat: Check team messages
+        ## Available MCP Tools
+        - get-position, walk-to, look-around, get-surface-height
+        - validate-build-site, find-build-site
+        - claim-build-zone, release-build-zone
+        - report-progress, get-progress-board
+        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
+        - flatten-area, fill-region, place-block
+        - inspect-house, repair-house, simulate-storm-damage
+        - send-chat
 
         ## Execution Protocol
-        1. Read chat for task requirements
-        2. Fly to survey area
-        3. Find flat, solid ground (avoid water, snow, ice, leaves)
-        4. Use terraform_flatten or clear_area to prepare site
-        5. Mark corners with torches
-        6. Send chat with exact coordinates for team
+        1. walk-to assigned zone center
+        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
+        3. only run claim-build-zone if your zone is not already pre-claimed for you
+        4. report-progress phase="claimed" only when you newly claim
+        5. use flatten-area (maxAdjustment=1) and ground-only place-block markers inside zone
+           - flowers and torches at surface level (Y = surfaceY)
+           - path markers (gravel/dirt_path) on ground layer (Y = surfaceY - 1)
+        6. report-progress phase="building" then "completed"
+        7. send-chat with blueprint coordinates
 
         ## Rules
-        - Surface-only sites (no underground)
-        - Verify ground is solid before marking
+        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
+        - Never edit outside claimed zone
+        - If zone is missing or claim fails: report-progress phase="blocked", request reassignment
+        - Surface-only planning edits
+        - Do not place decorative markers on roofs, walls, or in mid-air
+        - Prefer place-block for flowers/torches/paths; avoid fill-region for decorative markers
         - Provide exact X,Y,Z coordinates in chat
         - Max 15 tool calls per task
         - Always send blueprint coordinates via send-chat
@@ -71,9 +71,6 @@ apps:
               - "DesignDora_l4s"
             timeout: 60
 
-        - tool_type: builtin-group
-          group_name: "artifact_management"
-
       session_service:
         type: "memory"
         default_behavior: "PERSISTENT"
@@ -88,14 +85,14 @@ apps:
 
       agent_card:
         description: |
-          Design Dora is the site planner and architect. Uses terraform_flatten and clear_area 
-          to prepare build sites. Marks anchors and provides coordinate blueprints to the team.
+          Design Dora is the site planner and architect. Uses claim-build-zone and
+          flatten-area to prepare safe non-overlapping sites with clear coordinate blueprints.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
           - id: "site_planning"
             name: "Site Planning"
-            description: "Select and prepare flat building sites using terrain tools"
+            description: "Select and prepare flat building sites using flatten-area"
           - id: "blueprint_design"
             name: "Blueprint Design"
             description: "Create coordinate-based blueprints and mark build anchors"

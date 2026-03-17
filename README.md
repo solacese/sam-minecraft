@@ -30,6 +30,9 @@ The demo uses these defaults (override with environment variables):
 | `LITELLM_API_KEY` | (required) | Your LiteLLM API key |
 | `LITELLM_API_BASE` | `https://lite-llm.mymaas.net` | LiteLLM proxy URL |
 | `LITELLM_MODEL` | `openai/bedrock-claude-4-5-sonnet` | Model identifier |
+| `RUN_STARTUP_SMOKE` | `0` | Run optional startup smoke task when set to `1` |
+| `RUN_INTERESTING_MISSION` | `0` | Auto-run orchestrated mission at startup when set to `1` |
+| `RUN_PARALLEL_WORKER_MISSION` | `0` | Auto-run parallel worker mission at startup when set to `1` |
 
 ## Agent Team
 
@@ -46,20 +49,70 @@ Six agents work together, all powered by **Claude Sonnet 4** via LiteLLM:
 
 ## Available Tools
 
-The MCP server provides 10 tools for building:
+The MCP server provides 30 tools for safe coordinated building and landmark autonomy:
 
 | Tool | Description |
 |------|-------------|
 | `get-position` | Get bot's current position and facing direction |
-| `walk-to` | Walk to specific X,Z coordinates |
+| `walk-to` | Walk to specific X,Z coordinates via pathfinding (no teleport) |
 | `look-around` | Survey surroundings (blocks and entities) |
 | `get-surface-height` | Find ground level at X,Z coordinates |
+| `validate-build-site` | Check if a footprint is flat, dry land and buildable |
+| `find-build-site` | Find nearest valid flat-land footprint around a target |
+| `claim-build-zone` | Claim an exclusive build zone (bbox + TTL) |
+| `release-build-zone` | Release one of your claimed zones |
+| `report-progress` | Report phase updates to the shared progress board |
+| `get-progress-board` | Inspect active zone claims and recent updates |
+| `plan-village-layout` | Generate compact multi-house grid plans with footprint slots |
+| `allocate-village-zones` | Atomically reserve all worker house zones for parallel building |
+| `select-landmark-spec` | Pick the best local landmark template from a user prompt |
+| `compile-landmark-build-graph` | Compile component DAG/tasks/zones/budgets for a landmark run |
+| `allocate-build-graph-zones` | Atomically reserve all build-graph zones up front |
+| `dispatch-next-task` | Scheduler dispatch of next ready task packet per worker |
+| `update-task-status` | Update task lifecycle (`ready/in_progress/blocked/done/failed/repair`) |
+| `inspect-build-graph` | Progress board + KPI inspection by component and worker |
+| `repair-build-graph` | Schedule targeted QA repair tasks within a block budget |
+| `check-phase-gate` | Verify relay build prerequisites by phase |
+| `relay-handoff` | Record explicit worker handoffs for relay workflows |
 | `place-block` | Place a single block at X,Y,Z |
-| `build-decorated-house` | Build a complete house with roof, windows, lanterns, flower boxes |
-| `fill-region` | Fill rectangular volume with blocks (or 'air' to clear) |
-| `flatten-area` | Flatten terrain to consistent height |
+| `build-decorated-house` | Build a flat house with a solid block roof, block-by-block on flat land |
+| `fill-region` | Fill rectangular volume block-by-block |
+| `flatten-area` | Gently flatten terrain with guarded block-by-block edits |
+| `simulate-storm-damage` | Apply limited structure damage for recovery demos |
+| `inspect-house` | Score and list structural defects for a house footprint |
+| `repair-house` | Repair detected defects block-by-block |
 | `send-chat` | Send chat message to coordinate with other agents |
-| `plant-garden` | Create decorative garden with flowers, paths, lanterns |
+| `plant-garden` | Create decorative garden block-by-block on flat land |
+
+### Safety and Collision Guarantees
+
+- Mutating tools require a valid reservation, created by `claim-build-zone` or `allocate-village-zones`.
+- Overlapping zone claims are rejected by X/Z footprint with a hard 2-block spacing buffer.
+- Orchestrator can reserve all house zones up front with `allocate-village-zones`, or all landmark task zones with `allocate-build-graph-zones`, to avoid startup claim races.
+- Large destructive edits are blocked by footprint, volume, and air-edit caps.
+- Tools sample local terrain and reject edits in areas that look heavily man-made.
+- High-level structures now place blocks one-by-one for cinematic build visuals.
+- House roofs are solid full-block roofs (not slabs) for cleaner village silhouettes.
+- Builders walk to targets with pathfinding and do not teleport during tools.
+- House/garden tools reject water and non-land surfaces.
+- Site selection rejects footprints that are too close to nearby water by default.
+- House reservation checks use the exact structure envelope so buildings can be close together.
+- Orchestrators/workers can preflight terrain with `validate-build-site` and `find-build-site`.
+- `flatten-area` is now gentle grading only (`maxAdjustment` default ±1, max ±2).
+
+### Landmark Autonomy Mode
+
+For 30-minute autonomy demos, use this high-level sequence from `OrchestratorAgent`:
+1. `select-landmark-spec` from the user prompt.
+2. `compile-landmark-build-graph` at chosen origin/scale/style.
+3. `allocate-build-graph-zones` once (atomic all-or-nothing).
+4. Repeatedly `dispatch-next-task` per worker, execute assigned low-level tool packet, then `update-task-status`.
+5. Run `inspect-build-graph`, then `repair-build-graph` for final QA pass.
+
+Local curated templates are stored in `vendor/minecraft-mcp-server/landmark_specs/` and currently include:
+- Arc de Triomphe (France)
+- Amsterdam canal house (Netherlands)
+- Dutch windmill (Netherlands)
 
 ### House Styles
 
@@ -84,8 +137,10 @@ The `plant-garden` tool supports sizes 1-3:
 4. **Builds MCP server** - Compiles TypeScript in `vendor/minecraft-mcp-server`
 5. **Starts Minecraft server** - Docker container on `localhost:25565`
 6. **Starts SAM runtime** - WebUI available at `http://127.0.0.1:8000`
-7. **Runs smoke test** - Verifies agent connectivity
-8. **Executes team mission** - Orchestrator coordinates all 5 workers
+7. **Applies demo defaults** - Ops + kits + spawn spread for the agent users
+8. **Waits for your chat tasks** - No scenario starts automatically by default
+9. **Optional smoke test** - Only if `RUN_STARTUP_SMOKE=1`
+10. **Optional auto missions** - Only if mission flags are enabled
 
 ## Usage
 
@@ -97,6 +152,14 @@ Example prompt for `OrchestratorAgent`:
 ```
 Build a small village with a house, garden, and flattened plaza area. 
 Coordinate all workers to complete this together.
+```
+
+Landmark autonomy one-shot prompt:
+```
+Run a 30-minute landmark autonomy mission from this prompt:
+"Build a medium Arc de Triomphe near x=60 z=40 with a clean stone style."
+Use select-landmark-spec -> compile-landmark-build-graph -> allocate-build-graph-zones,
+then dispatch workers with update-task-status, and finish with inspect-build-graph + repair-build-graph.
 ```
 
 ### Stopping
@@ -114,8 +177,8 @@ To start fresh with a clean world:
 # Reset with a specific seed
 ./reset-world.sh 12345
 
-# Reset with a random seed
-./reset-world.sh random
+# Generate and persist a new fixed 64-bit seed
+./reset-world.sh auto
 ```
 
 This stops the server, deletes all world data, and optionally updates the seed in `docker-compose.yml`.
@@ -130,7 +193,8 @@ sam-minecraft/
 │   └── agents/                # Individual agent configurations
 ├── vendor/
 │   └── minecraft-mcp-server/  # MCP server (TypeScript)
-│       └── src/main.ts        # All 10 tools defined here
+│       ├── src/main.ts        # All 30 MCP tools defined here
+│       └── landmark_specs/    # Local curated landmark spec bank
 └── docs/
     └── test-instructions.md   # Manual testing guide
 ```

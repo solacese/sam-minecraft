@@ -4,20 +4,40 @@ Use these prompts in the SAM WebUI at `http://127.0.0.1:8000`.
 
 ## Available Tools
 
-The MCP server provides these 10 tools:
+The MCP server provides these 30 tools:
 
 | Tool | Description |
 |------|-------------|
 | `get-position` | Get bot's current position |
-| `walk-to` | Walk to X,Z coordinates |
+| `walk-to` | Move to X,Z coordinates via pathfinding (no teleport) |
 | `look-around` | Survey surroundings |
 | `get-surface-height` | Find ground level at X,Z |
+| `validate-build-site` | Validate footprint is flat, dry buildable land |
+| `find-build-site` | Find nearest valid footprint around a target center |
+| `claim-build-zone` | Claim exclusive build bbox with TTL |
+| `release-build-zone` | Release a claimed zone |
+| `report-progress` | Add progress event to coordination board |
+| `get-progress-board` | View claims and progress events |
+| `plan-village-layout` | Generate compact multi-house grid plans |
+| `allocate-village-zones` | Atomically reserve all worker house zones for parallel building |
+| `select-landmark-spec` | Select the nearest local landmark template from prompt |
+| `compile-landmark-build-graph` | Build component DAG/tasks/zones/budgets for landmark run |
+| `allocate-build-graph-zones` | Atomically pre-claim all graph zones before execution |
+| `dispatch-next-task` | Dispatch next ready graph task for a worker |
+| `update-task-status` | Update graph task status (`ready`..`repair`) |
+| `inspect-build-graph` | Graph KPI and component/worker progress board |
+| `repair-build-graph` | Schedule repair tasks with a budget |
+| `check-phase-gate` | Validate relay prerequisite phases |
+| `relay-handoff` | Record explicit worker handoffs |
 | `place-block` | Place single block at X,Y,Z |
-| `build-decorated-house` | Build complete house with decorations |
-| `fill-region` | Fill rectangular volume |
-| `flatten-area` | Flatten terrain |
+| `build-decorated-house` | Build decorated flat house with a solid roof, block-by-block on land |
+| `fill-region` | Fill volume block-by-block |
+| `flatten-area` | Gently flatten terrain with safety limits |
+| `simulate-storm-damage` | Apply controlled damage for recovery demos |
+| `inspect-house` | Evaluate house defects and quality score |
+| `repair-house` | Patch house defects block-by-block |
 | `send-chat` | Send chat message |
-| `plant-garden` | Create decorative garden |
+| `plant-garden` | Create decorative garden block-by-block on land |
 
 ---
 
@@ -26,176 +46,182 @@ The MCP server provides these 10 tools:
 **Target agent:** `MinecraftAgent`
 
 **Prompt:**
-```
-Get your current position and look around to survey the area.
+```text
+Get your current position and use look-around with radius 12.
 ```
 
 **Expected:**
 - `get-position` returns coordinates
-- `look-around` reports nearby blocks and entities
+- `look-around` returns nearby entities and ground samples
 
 ---
 
-## Test 2: Surface Detection
+## Test 2: Claim + Progress Board
 
 **Target agent:** `MinecraftAgent`
 
 **Prompt:**
-```
-Find the surface height at coordinates x=100, z=100 and report the ground block type.
+```text
+Claim a zone with zoneId "test_claim_hank" from x=2 y=60 z=2 to x=8 y=95 z=8.
+Then report-progress with taskId "manual-test", zoneId "test_claim_hank", phase "claimed", note "zone reserved".
+Then call get-progress-board with taskId "manual-test".
 ```
 
 **Expected:**
-- `get-surface-height` returns Y level and block type (e.g., "grass_block")
+- `claim-build-zone` succeeds
+- Claim ownership/conflicts are enforced by X/Z footprint (Y range is metadata)
+- `report-progress` logs claimed phase
+- `get-progress-board` shows active claim + event
 
 ---
 
-## Test 3: Block Placement
+## Test 2b: Terrain Preflight
 
 **Target agent:** `MinecraftAgent`
 
 **Prompt:**
-```
-Get the surface height at x=50, z=50, then place a glowstone block one block above the surface there.
+```text
+Use validate-build-site for x1=2 z1=2 x2=8 z2=8.
+Then use find-build-site near centerX=6 centerZ=6 width=7 depth=7 searchRadius=12.
 ```
 
 **Expected:**
-- Agent uses `get-surface-height` first
-- Then uses `place-block` with correct Y coordinate
-- Glowstone appears in the world
+- `validate-build-site` reports VALID/INVALID with details
+- `find-build-site` returns a land footprint and suggested claim coordinates
 
 ---
 
-## Test 4: Build a House
+## Test 3: Single Block Placement in Claimed Zone
 
 **Target agent:** `MinecraftAgent`
 
 **Prompt:**
-```
-Build a decorated oak house at x=0, z=0.
+```text
+Use get-surface-height at x=5 z=5, then place-block one glowstone at that surface y.
+After that, report-progress taskId "manual-test", zoneId "test_claim_hank", phase "building", note "placed marker".
 ```
 
 **Expected:**
-- `build-decorated-house` creates a complete house
-- House has walls, peaked roof, door, windows, lanterns, flower boxes
+- `place-block` succeeds only because zone is claimed
+- Glowstone appears in world
+- progress event appears in board
 
 ---
 
-## Test 5: Build Different House Styles
+## Test 4: Build House Block-by-Block
 
 **Target agent:** `MinecraftAgent`
 
 **Prompt:**
-```
-Build a spruce style house at x=20, z=0 and a stone style house at x=40, z=0.
+```text
+Build a decorated oak house at x=6 z=6 inside your claimed zone.
+Then report-progress taskId "manual-test", zoneId "test_claim_hank", phase "completed", note "house done".
 ```
 
 **Expected:**
-- Two houses built with different materials
-- Spruce house uses dark wood
-- Stone house uses stone bricks
+- `build-decorated-house` runs with many block placements (not bulk `/fill`)
+- House has roof/windows/door/lanterns
+- progress board shows completed event
 
 ---
 
-## Test 6: Plant a Garden
+## Test 5: Overlap Rejection
 
-**Target agent:** `MinecraftAgent`
+**Target agent:** `BuildBeaAgent`
 
 **Prompt:**
-```
-Plant a large garden (size 3) at x=0, z=20.
+```text
+Try to claim overlapping zone zoneId "bea_overlap" from x=4 y=60 z=4 to x=8 y=95 z=8.
 ```
 
 **Expected:**
-- `plant-garden` creates garden with flowers
-- Gravel path through center
-- Lantern posts at corners
+- `claim-build-zone` fails with conflict against `test_claim_hank`
 
 ---
 
-## Test 7: Flatten Area
+## Test 6: Claimed Flatten + Garden
 
-**Target agent:** `MinecraftAgent`
+**Target agent:** `ForestFinnAgent`
 
 **Prompt:**
-```
-Flatten a 20x20 area from x=-10,z=-10 to x=10,z=10 using grass_block.
-```
-
-**Expected:**
-- `flatten-area` levels the terrain
-- Area becomes flat at consistent Y level
-
----
-
-## Test 8: Fill Region
-
-**Target agent:** `MinecraftAgent`
-
-**Prompt:**
-```
-Create a stone platform by filling from x=60,y=64,z=60 to x=70,y=64,z=70 with stone_bricks.
+```text
+Claim a non-overlapping zone "finn_zone_test" from x=24 y=60 z=24 to x=36 y=95 z=36.
+Report-progress taskId "manual-test", zoneId "finn_zone_test", phase "claimed".
+Flatten-area from x=24 z=24 to x=34 z=34 using grass_block and maxAdjustment=1.
+Plant-garden at x=30 z=30 with size=2.
+Report-progress taskId "manual-test", zoneId "finn_zone_test", phase "completed".
 ```
 
 **Expected:**
-- `fill-region` creates solid platform
-- Platform is 11x11 blocks of stone bricks
+- zone claim succeeds
+- flatten and garden succeed within claim
+- flatten only does minor grading (no aggressive terrain wipe)
+- edits are block-by-block and visually gradual
 
 ---
 
-## Test 9: Chat Communication
-
-**Target agent:** `MinecraftAgent`
-
-**Prompt:**
-```
-Send a chat message saying "Hello from Handy Hank!"
-```
-
-**Expected:**
-- `send-chat` sends message
-- Message visible in Minecraft chat
-
----
-
-## Test 10: Team Coordination
+## Test 7: Team Coordination
 
 **Target agent:** `OrchestratorAgent`
 
 **Prompt:**
-```
-Coordinate all workers to build a small village:
-- Handy Hank: Build an oak house at x=0, z=0
-- Design Dora: Flatten a plaza area at x=0, z=30
-- Build Bea: Build a spruce house at x=20, z=0
-- Supply Sid: Place lanterns around the plaza
-- Forest Finn: Plant a garden at x=-20, z=0
-
-Have each agent send a chat message when they complete their task.
+```text
+Coordinate all workers to build a village while enforcing safe coordination:
+- Each worker must validate terrain (validate-build-site/find-build-site) before claiming
+- Each worker must claim-build-zone before any mutating tool
+- Each worker must call report-progress phases claimed/building/completed
+- Zones must be non-overlapping
+- Any flatten-area call must use maxAdjustment=1
+- Build 3 decorated houses and one garden
+- End with per-worker summary
 ```
 
 **Expected:**
-- Orchestrator delegates to all 5 workers in parallel
-- Each worker completes their assigned task
-- Chat messages confirm completion
-- Village has 2 houses, flattened plaza, lanterns, and garden
+- all 5 peers delegated in parallel
+- each worker claims non-overlapping zones
+- progress board shows per-worker phases
+- no building overlap
+
+---
+
+## Test 8: Landmark Autonomy (30-Minute Loop)
+
+**Target agent:** `OrchestratorAgent`
+
+**Prompt:**
+```text
+Run a landmark autonomy mission from this single prompt:
+"Build a medium Arc de Triomphe inspired landmark near x=60 z=40, with a clean stone style."
+
+Required flow:
+1) select-landmark-spec
+2) compile-landmark-build-graph
+3) allocate-build-graph-zones
+4) dispatch-next-task for each worker in parallel
+5) workers execute assigned tool packets and you call update-task-status
+6) inspect-build-graph and then repair-build-graph for QA
+7) finish with KPIs: component completion %, blocks placed/budget %, ETA, repair backlog
+```
+
+**Expected:**
+- spec is selected from local bank without web dependency
+- graph is compiled with dependencies and per-task owners
+- zone allocation is atomic and conflict-free
+- workers execute differentiated component tasks in parallel
+- final QA/repair pass runs and KPIs are reported
 
 ---
 
 ## Validation Commands
 
-Check SAM logs for errors:
+Check SAM logs:
 
 ```bash
-# Look for tool call errors
-grep -i "error" sam.log | tail -20
-
-# Check agent activity
-grep "MinecraftAgent\|OrchestratorAgent" sam.log | tail -30
+grep -i "claim-build-zone\|report-progress\|Zone claim conflict\|not fully reserved\|error" sam.log | tail -80
 ```
 
 Check Minecraft server logs:
 
 ```bash
-docker logs mc 2>&1 | tail -50
+docker compose logs --no-color --tail=80 mc
 ```

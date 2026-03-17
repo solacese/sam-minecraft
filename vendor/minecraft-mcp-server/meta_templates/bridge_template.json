@@ -1,0 +1,110 @@
+{
+  "templateType": "bridge",
+  "description": "Template for bridge structures (suspension, arch, beam bridges)",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the bridge"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "bridgeType": {
+      "type": "enum",
+      "required": true,
+      "values": ["suspension", "arch", "beam", "truss", "cable_stayed"],
+      "description": "Type of bridge structure"
+    },
+    "span": {
+      "type": "enum",
+      "required": true,
+      "values": ["short", "medium", "long"],
+      "description": "Length of the bridge span"
+    },
+    "hasTowers": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether bridge has support towers"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "spanMapping": {
+      "short": {"length": 40, "deckWidth": 11},
+      "medium": {"length": 70, "deckWidth": 13},
+      "long": {"length": 110, "deckWidth": 15}
+    },
+    "bridgeTypeMapping": {
+      "suspension": {
+        "towerHeight": 45,
+        "cableCount": 2,
+        "deckHeight": 15
+      },
+      "arch": {
+        "archHeight": 25,
+        "archThickness": 3,
+        "deckHeight": 20
+      },
+      "beam": {
+        "supportCount": 3,
+        "beamHeight": 5,
+        "deckHeight": 5
+      },
+      "truss": {
+        "trussHeight": 12,
+        "supportSpacing": 15,
+        "deckHeight": 3
+      },
+      "cable_stayed": {
+        "towerHeight": 40,
+        "cablePattern": "fan",
+        "deckHeight": 10
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "approach_left",
+        "role": "site",
+        "widthPercent": 15,
+        "scaleMultiplier": 1.2
+      },
+      {
+        "id": "tower_left",
+        "role": "foundation",
+        "heightPercent": 100,
+        "scaleMultiplier": 1.0,
+        "conditional": "hasTowers"
+      },
+      {
+        "id": "deck_main",
+        "role": "walls",
+        "widthPercent": 70,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "tower_right",
+        "role": "foundation",
+        "heightPercent": 100,
+        "scaleMultiplier": 1.0,
+        "conditional": "hasTowers"
+      },
+      {
+        "id": "approach_right",
+        "role": "site",
+        "widthPercent": 15,
+        "scaleMultiplier": 1.2
+      }
+    ]
+  }
+}

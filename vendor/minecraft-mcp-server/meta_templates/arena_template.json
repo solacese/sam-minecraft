@@ -1,0 +1,141 @@
+{
+  "templateType": "arena",
+  "description": "Template for amphitheaters, stadiums, and performance venues",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the arena"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "arenaShape": {
+      "type": "enum",
+      "required": true,
+      "values": ["oval", "circular", "rectangular", "horseshoe"],
+      "description": "Shape of the arena"
+    },
+    "seatingStyle": {
+      "type": "enum",
+      "required": true,
+      "values": ["tiered", "stepped", "continuous"],
+      "description": "Style of seating arrangement"
+    },
+    "capacity": {
+      "type": "enum",
+      "required": true,
+      "values": ["small", "medium", "large", "massive"],
+      "description": "Seating capacity category"
+    },
+    "hasRoof": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether arena has roof covering"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "capacityMapping": {
+      "small": {
+        "diameter": 40,
+        "height": 15,
+        "tiers": 3
+      },
+      "medium": {
+        "diameter": 65,
+        "height": 25,
+        "tiers": 4
+      },
+      "large": {
+        "diameter": 90,
+        "height": 35,
+        "tiers": 5
+      },
+      "massive": {
+        "diameter": 120,
+        "height": 45,
+        "tiers": 6
+      }
+    },
+    "shapeMapping": {
+      "oval": {
+        "widthRatio": 1.3,
+        "symmetry": "bilateral"
+      },
+      "circular": {
+        "widthRatio": 1.0,
+        "symmetry": "radial"
+      },
+      "rectangular": {
+        "widthRatio": 1.5,
+        "symmetry": "bilateral"
+      },
+      "horseshoe": {
+        "widthRatio": 1.1,
+        "symmetry": "bilateral"
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "outer_plaza",
+        "role": "site",
+        "heightPercent": 3,
+        "scaleMultiplier": 2.5
+      },
+      {
+        "id": "foundation_ring",
+        "role": "foundation",
+        "heightPercent": 10,
+        "scaleMultiplier": 1.8
+      },
+      {
+        "id": "arena_floor",
+        "role": "foundation",
+        "heightPercent": 5,
+        "scaleMultiplier": 0.7
+      },
+      {
+        "id": "lower_seating",
+        "role": "walls",
+        "heightPercent": 30,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "mid_seating",
+        "role": "walls",
+        "heightPercent": 25,
+        "scaleMultiplier": 1.1
+      },
+      {
+        "id": "upper_seating",
+        "role": "walls",
+        "heightPercent": 20,
+        "scaleMultiplier": 1.2
+      },
+      {
+        "id": "exterior_arcade",
+        "role": "ornament",
+        "heightPercent": 70,
+        "scaleMultiplier": 1.3
+      },
+      {
+        "id": "roof_structure",
+        "role": "roof",
+        "heightPercent": 7,
+        "scaleMultiplier": 0.9,
+        "conditional": "hasRoof"
+      }
+    ]
+  }
+}

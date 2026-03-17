@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "1.0",
+  "id": "neuschwanstein_castle_de",
+  "name": "Neuschwanstein Castle",
+  "culture": "de",
+  "description": "Romanesque Revival palace on rugged hill with white limestone and towers.",
+  "keywords": ["neuschwanstein", "castle", "germany", "bavarian", "palace", "romanesque", "fairytale"],
+  "defaultStyle": "white_limestone",
+  "styles": {
+    "white_limestone": {
+      "primary": "minecraft:white_concrete",
+      "secondary": "minecraft:quartz_block",
+      "accent": "minecraft:smooth_quartz",
+      "detail": "minecraft:red_terracotta",
+      "roof": "minecraft:gray_concrete",
+      "path": "minecraft:stone_bricks",
+      "glass": "minecraft:blue_stained_glass"
+    }
+  },
+  "scaleVariants": {
+    "small": { "footprintScale": 0.65, "heightScale": 0.7, "budgetScale": 0.6 },
+    "medium": { "footprintScale": 1.0, "heightScale": 1.0, "budgetScale": 1.0 },
+    "large": { "footprintScale": 1.35, "heightScale": 1.3, "budgetScale": 1.45 }
+  },
+  "components": [
+    {
+      "id": "site_hill",
+      "label": "Hill Foundation",
+      "role": "site",
+      "primaryTool": "flatten-area",
+      "preferredWorker": "DesignDoraAgent",
+      "dependencies": [],
+      "offsetX": 0,
+      "offsetZ": 0,
+      "offsetY": 0,
+      "width": 61,
+      "depth": 51,
+      "height": 3,
+      "materialKey": "path",
+      "blockBudget": 700
+    },
+    {
+      "id": "main_palace",
+      "label": "Main Palace Building",
+      "role": "walls",
+      "primaryTool": "fill-region",
+      "preferredWorker": "BuildBeaAgent",
+      "dependencies": ["site_hill"],
+      "offsetX": 0,
+      "offsetZ": 0,
+      "offsetY": 0,
+      "width": 35,
+      "depth": 25,
+      "height": 18,
+      "materialKey": "primary",
+      "blockBudget": 15750
+    },
+    {
+      "id": "main_tower",
+      "label": "Central Tower",
+      "role": "walls",
+      "primaryTool": "fill-region",
+      "preferredWorker": "MinecraftAgent",
+      "dependencies": ["main_palace"],
+      "offsetX": -8,
+      "offsetZ": -5,
+      "offsetY": 18,
+      "width": 11,
+      "depth": 11,
+      "height": 25,
+      "materialKey": "secondary",
+      "blockBudget": 3025
+    },
+    {
+      "id": "gatehouse_tower",
+      "label": "Gatehouse Tower",
+      "role": "walls",
+      "primaryTool": "fill-region",
+      "preferredWorker": "SupplySidAgent",
+      "dependencies": ["site_hill"],
+      "offsetX": 15,
+      "offsetZ": 8,
+      "offsetY": 0,
+      "width": 9,
+      "depth": 9,
+      "height": 22,
+      "materialKey": "primary",
+      "blockBudget": 1782
+    },
+    {
+      "id": "courtyard",
+      "label": "Inner Courtyard",
+      "role": "foundation",
+      "primaryTool": "flatten-area",
+      "preferredWorker": "DesignDoraAgent",
+      "dependencies": ["main_palace"],
+      "offsetX": 5,
+      "offsetZ": 0,
+      "offsetY": 0,
+      "width": 19,
+      "depth": 15,
+      "height": 1,
+      "materialKey": "path",
+      "blockBudget": 285
+    }
+  ],
+  "qualityRules": [
+    "Maintain white facade with red roofs.",
+    "Keep vertical emphasis with towers.",
+    "Position on elevated terrain.",
+    "Preserve Romanesque Revival architectural style."
+  ]
+}

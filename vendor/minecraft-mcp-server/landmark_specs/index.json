@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1.0",
+  "specs": [
+    "arc_de_triomphe_fr.json",
+    "amsterdam_canal_house_nl.json",
+    "dutch_windmill_nl.json"
+  ]
+}

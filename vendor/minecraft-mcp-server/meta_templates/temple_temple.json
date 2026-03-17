@@ -1,0 +1,109 @@
+{
+  "templateType": "temple",
+  "description": "Template for religious structures (temples, churches, mosques, pagodas)",
+  "parameters": {
+    "name": {
+      "type": "string",
+      "required": true,
+      "description": "Name of the temple"
+    },
+    "culture": {
+      "type": "string",
+      "required": true,
+      "description": "Culture code"
+    },
+    "architectureStyle": {
+      "type": "enum",
+      "required": true,
+      "values": ["classical", "gothic", "buddhist", "islamic", "hindu", "pagoda"],
+      "description": "Architectural style"
+    },
+    "hasColumns": {
+      "type": "boolean",
+      "required": true,
+      "description": "Whether the temple has columned portico"
+    },
+    "roofStyle": {
+      "type": "enum",
+      "required": true,
+      "values": ["flat", "peaked", "domed", "tiered", "pagoda_tiers"],
+      "description": "Style of roof"
+    },
+    "materials": {
+      "type": "object",
+      "required": true,
+      "properties": {
+        "primary": {"type": "string"},
+        "secondary": {"type": "string"},
+        "accent": {"type": "string"}
+      }
+    }
+  },
+  "generationRules": {
+    "styleMapping": {
+      "classical": {
+        "columnCount": "8-17",
+        "roofHeight": "low",
+        "symmetry": "bilateral"
+      },
+      "gothic": {
+        "columnCount": "0",
+        "roofHeight": "tall",
+        "symmetry": "bilateral"
+      },
+      "buddhist": {
+        "columnCount": "0-4",
+        "roofHeight": "medium",
+        "symmetry": "radial"
+      },
+      "islamic": {
+        "columnCount": "4-8",
+        "roofHeight": "domed",
+        "symmetry": "quadrilateral"
+      },
+      "hindu": {
+        "columnCount": "8-12",
+        "roofHeight": "tiered",
+        "symmetry": "radial"
+      },
+      "pagoda": {
+        "columnCount": "0",
+        "roofHeight": "multi_tier",
+        "symmetry": "radial"
+      }
+    },
+    "componentStructure": [
+      {
+        "id": "platform",
+        "role": "site",
+        "heightPercent": 5,
+        "scaleMultiplier": 2.5
+      },
+      {
+        "id": "foundation_steps",
+        "role": "foundation",
+        "heightPercent": 10,
+        "scaleMultiplier": 1.8
+      },
+      {
+        "id": "main_chamber",
+        "role": "walls",
+        "heightPercent": 50,
+        "scaleMultiplier": 1.0
+      },
+      {
+        "id": "colonnade",
+        "role": "ornament",
+        "heightPercent": 20,
+        "scaleMultiplier": 1.2,
+        "conditional": "hasColumns"
+      },
+      {
+        "id": "roof",
+        "role": "roof",
+        "heightPercent": 15,
+        "scaleMultiplier": 1.3
+      }
+    ]
+  }
+}

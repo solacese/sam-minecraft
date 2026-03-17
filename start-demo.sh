@@ -1,4 +1,4 @@
-ti #!/usr/bin/env sh
+#!/usr/bin/env sh
 set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -6,8 +6,9 @@ cd "$ROOT_DIR"
 
 SAM_PID=""
 CLEANED_UP=0
-RUN_INTERESTING_MISSION="${RUN_INTERESTING_MISSION:-1}"
+RUN_INTERESTING_MISSION="${RUN_INTERESTING_MISSION:-0}"
 RUN_PARALLEL_WORKER_MISSION="${RUN_PARALLEL_WORKER_MISSION:-0}"
+RUN_STARTUP_SMOKE="${RUN_STARTUP_SMOKE:-0}"
 AGENT_USERS="HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32"
 BASE_ADMIN_USERS="Noptus noptus raphaelcaillon HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32"
 SEEDED_USERS=""
@@ -44,6 +45,27 @@ TXT
   model_name="${LITELLM_MODEL:-openai/bedrock-claude-4-5-sonnet}"
   api_base="${LITELLM_API_BASE:-https://lite-llm.mymaas.net}"
   log "LiteLLM configuration verified (model: ${model_name}, api: ${api_base})"
+}
+
+ensure_namespace_config() {
+  if [ -z "${NAMESPACE:-}" ]; then
+    export NAMESPACE="sam_minecraft_demo"
+    log "NAMESPACE not set; defaulting to ${NAMESPACE}"
+  fi
+}
+
+ensure_sam_dev_mode() {
+  if [ -z "${SOLACE_DEV_MODE:-}" ]; then
+    export SOLACE_DEV_MODE="true"
+    log "SOLACE_DEV_MODE not set; defaulting to ${SOLACE_DEV_MODE} for local demo."
+  fi
+}
+
+ensure_session_secret_key() {
+  if [ -z "${SESSION_SECRET_KEY:-}" ]; then
+    export SESSION_SECRET_KEY="sam_minecraft_demo_session_secret"
+    log "SESSION_SECRET_KEY not set; using a local default for demo startup."
+  fi
 }
 
 port_available() {
@@ -276,32 +298,32 @@ worker_nudge_prompt() {
   case "$1" in
     DesignDoraAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (20, 20), then use flatten-area to prepare a 20x20 building site, then use send-chat to report completion.
+Use walk-to to go to coordinates (20, 20). Then run find-build-site with centerX=20 centerZ=20 width=15 depth=15 searchRadius=12 maxHeightDelta=2. Claim that exact footprint as zoneId="design_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress with taskId="manual-nudge", zoneId="design_zone", phase="claimed". Then flatten-area on that exact x/z footprint with material="grass_block" and maxAdjustment=1. Then place only ground markers: flowers/torches at surface level and gravel path blocks on ground layer (no roofs/walls/air). Then report-progress phase="completed" and send-chat with final footprint coordinates.
 EOF
       ;;
     SupplySidAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (20, 35), then use build-decorated-house with style='birch' to build a house, then use send-chat to report completion.
+Use walk-to to go to coordinates (20, 35). Then run find-build-site with centerX=20 centerZ=40 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="sid_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="sid_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="birch". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     MinecraftAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (25, 25), then use build-decorated-house with style='oak' to build a house, then use send-chat to report completion.
+Use walk-to to go to coordinates (25, 25). Then run find-build-site with centerX=32 centerZ=22 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="hank_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="hank_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="oak". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     BuildBeaAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (35, 20), then use build-decorated-house with style='spruce' to build a house, then use send-chat to report completion.
+Use walk-to to go to coordinates (35, 20). Then run find-build-site with centerX=42 centerZ=36 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="bea_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="bea_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="spruce". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     ForestFinnAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (30, 30), then use plant-garden with size=3 to create a garden, then use send-chat to report completion.
+Use walk-to to go to coordinates (30, 30). Then run find-build-site with centerX=32 centerZ=42 width=13 depth=13 searchRadius=14 maxHeightDelta=1. Claim that exact footprint as zoneId="finn_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="finn_zone", phase="claimed". Then use plant-garden at the found center coordinates with size=3. Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     *)
       cat <<'EOF'
-Use get-position to find your location, then use build-decorated-house or plant-garden to create something beautiful, then use send-chat to report.
+Use get-position first. Then validate-build-site for a small intended footprint. If invalid, use find-build-site nearby. Then claim-build-zone for that exact validated footprint. Then report-progress phase="claimed". Then use build-decorated-house or plant-garden inside your claimed zone. Then report-progress phase="completed" and send-chat.
 EOF
       ;;
   esac
@@ -334,7 +356,14 @@ worker_has_required_activity_since() {
   agent="$1"
   start_line="$2"
 
+  log_contains_since "$start_line" "AgentID: ${agent}, ToolName: report-progress" || return 1
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (get-position|walk-to|get-surface-height)" || return 1
+  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (claim-build-zone|get-progress-board)"; then
+    return 1
+  fi
+  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (validate-build-site|find-build-site|get-progress-board)"; then
+    return 1
+  fi
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (place-block|fill-region|flatten-area|build-decorated-house|plant-garden)" || return 1
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: send-chat" || return 1
 }
@@ -344,12 +373,51 @@ ensure_worker_activity_since() {
 
   for agent in DesignDoraAgent SupplySidAgent MinecraftAgent BuildBeaAgent ForestFinnAgent; do
     if worker_has_required_activity_since "$agent" "$start_line"; then
-      log "${agent} activity confirmed (read-chat + world action + send-chat)."
+      log "${agent} activity confirmed (reservation check + progress + world action + send-chat)."
       continue
     fi
 
-    run_worker_nudge "$agent" "No complete read-chat/world-action/send-chat signature detected"
+    run_worker_nudge "$agent" "No complete reservation/progress/world-action/send-chat signature detected"
   done
+}
+
+zone_conflict_detected_since() {
+  start_line="$1"
+  log_contains_since "$start_line" "Zone claim conflict|Operation overlaps zone|not fully reserved|claim-build-zone first"
+}
+
+run_reassignment_wave() {
+  reason="$1"
+  reassignment_output_file="$(mktemp)"
+  reassignment_prompt_file="$(mktemp)"
+  cat >"$reassignment_prompt_file" <<EOF
+A worker reported a zone reservation conflict: ${reason}
+
+Run exactly one reassignment wave now:
+1) Re-plan only the conflicting worker(s) to new non-overlapping coordinates.
+2) Every reassigned worker must call claim-build-zone before mutating tools, and the claim must match only the structure footprint (no extra buffer).
+3) Every reassigned worker must call report-progress with phases "reassigned" and "completed".
+4) Do not restart the entire mission. Continue from current state and finish.
+EOF
+
+  reassignment_prompt="$(cat "$reassignment_prompt_file")"
+  rm -f "$reassignment_prompt_file"
+
+  log "Running single reassignment wave for reservation conflicts..."
+  if ! ./.venv/bin/sam task send \
+    --url http://127.0.0.1:8000 \
+    --agent OrchestratorAgent \
+    --timeout 420 \
+    --quiet \
+    "$reassignment_prompt" >"$reassignment_output_file" 2>&1; then
+    cat "$reassignment_output_file"
+    rm -f "$reassignment_output_file"
+    log "Warning: reassignment wave failed."
+    return 0
+  fi
+
+  cat "$reassignment_output_file"
+  rm -f "$reassignment_output_file"
 }
 
 run_orchestrated_interest_mission() {
@@ -359,24 +427,44 @@ run_orchestrated_interest_mission() {
 Execute a beautiful village building mission now.
 
 Requirements:
-- Call ALL 5 peer agents IN PARALLEL in your first response: peer_DesignDoraAgent, peer_SupplySidAgent, peer_MinecraftAgent, peer_BuildBeaAgent, peer_ForestFinnAgent.
-- Pick a central location (e.g., X=20, Z=20) for the village.
+- FIRST call allocate-village-zones ONCE to reserve all house zones atomically before any worker starts.
+- Use center near X=32, Z=32 with rows=2 cols=2 houseCount=3 houseWidth=7 houseDepth=7 bufferBlocks=2.
+- Use buildersCsv="MinecraftAgent,BuildBeaAgent,SupplySidAgent" and stylesCsv="oak,spruce,birch".
+- Set clearExistingForOwners=true so stale claims do not block this run.
+- Then call ALL 5 peer agents IN PARALLEL in your first delegation response: peer_DesignDoraAgent, peer_SupplySidAgent, peer_MinecraftAgent, peer_BuildBeaAgent, peer_ForestFinnAgent.
 - Mission: Build a beautiful village with decorated houses and gardens.
+- All workers MUST report progress phases using report-progress.
 
 Agent assignments:
-- DesignDora: Use walk-to to go to (20, 20), then use flatten-area to prepare a 30x30 building site
-- MinecraftAgent: Use walk-to to go to (25, 25), then use build-decorated-house with style='oak' to build the main house
-- BuildBea: Use walk-to to go to (35, 20), then use build-decorated-house with style='spruce' to build a second house
-- SupplySid: Use walk-to to go to (20, 35), then use build-decorated-house with style='birch' to build a third house
-- ForestFinn: Use walk-to to go to (30, 30), then use plant-garden with size=3 to create a central garden
+- MinecraftAgent / BuildBea / SupplySid: each receives one allocated house zone from allocate-village-zones.
+  - walk-to assigned center
+  - get-progress-board to confirm assigned zone + bbox
+  - do NOT run claim-build-zone if already pre-claimed for you
+  - report-progress phase="building"
+  - build-decorated-house using assigned style at assigned center
+  - report-progress phase="completed"
+  - send-chat summary
+- DesignDora: use a separate nearby zone for plaza prep and grounded markers only.
+  - walk-to center near (20,20), validate/find site, claim zone if needed, flatten-area maxAdjustment=1
+  - place flowers/torches on surface and path blocks on ground layer
+  - report-progress completed and send-chat
+- ForestFinn: use a nearby non-overlapping garden zone.
+  - walk-to center near (28,56), validate/find site, claim zone if needed
+  - plant-garden size=3, report-progress completed, send-chat
 
 Every worker must:
-1. First use walk-to to move to their assigned location
-2. Then use get-surface-height to find ground level
-3. Then perform their building task
-4. Finally use send-chat to report completion
+1. First use walk-to
+2. Confirm assigned zone on get-progress-board
+3. Claim only if zone is not already pre-claimed for that worker
+4. Then report-progress taskId="<mission task id or village-mission>" phase="building"
+5. Then perform building tool(s) strictly inside claimed zone
+   - never place blocks in mid-air; decorations must be grounded
+6. If flatten-area is used, maxAdjustment must be 1
+7. Then report-progress phase="completed"
+8. Finally send-chat summary
 
-Execute delegations NOW. Return final summary with coordinates.
+If allocation fails, retry allocate-village-zones once with bufferBlocks=3. If any worker still hits a reservation conflict, reassign only that worker once and continue.
+Execute delegations NOW. Return final summary with zone IDs and coordinates.
 EOF
   mission_prompt="$(cat "$mission_prompt_file")"
   rm -f "$mission_prompt_file"
@@ -439,6 +527,11 @@ EOF
   done
 
   ensure_worker_activity_since "$mission_log_start_line"
+
+  if zone_conflict_detected_since "$mission_log_start_line"; then
+    run_reassignment_wave "Reservation conflict detected in mission logs"
+    ensure_worker_activity_since "$mission_log_start_line"
+  fi
 
   if [ -n "$mission_output_dir" ] && [ -f "$mission_output_dir/sse_events.yaml" ]; then
     log "Mission events saved at: $mission_output_dir"
@@ -540,6 +633,9 @@ node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if(maj<20
 
 # Check LiteLLM configuration
 check_litellm_config
+ensure_namespace_config
+ensure_sam_dev_mode
+ensure_session_secret_key
 
 if [ ! -d .venv ]; then
   log "Creating Python virtual environment in .venv..."
@@ -624,22 +720,30 @@ wait_for_agent_users_online
 apply_ideal_demo_conditions
 wait_for_agent_cards
 
-log "Running smoke instruction against MinecraftAgent..."
-./.venv/bin/sam task send \
-  --url http://127.0.0.1:8000 \
-  --agent MinecraftAgent \
-  --timeout 300 \
-  --quiet \
-  "Run startup checks: use get-position to find your location, use get-surface-height to find ground level, then use send-chat to say 'HandyHank_l33 startup smoke test successful'."
+if [ "$RUN_STARTUP_SMOKE" = "1" ]; then
+  log "Running smoke instruction against MinecraftAgent..."
+  ./.venv/bin/sam task send \
+    --url http://127.0.0.1:8000 \
+    --agent MinecraftAgent \
+    --timeout 300 \
+    --quiet \
+    "Run startup checks: use get-position to find your location, use get-surface-height to find ground level, then use send-chat to say 'HandyHank_l33 startup smoke test successful'."
 
-log "Smoke test complete."
+  log "Smoke test complete."
+else
+  log "Skipping startup smoke task (RUN_STARTUP_SMOKE=0)."
+fi
 
 if [ "$RUN_INTERESTING_MISSION" = "1" ]; then
   run_orchestrated_interest_mission
+else
+  log "Skipping auto mission start (RUN_INTERESTING_MISSION=0)."
 fi
 
 if [ "$RUN_PARALLEL_WORKER_MISSION" = "1" ]; then
   run_parallel_worker_mission
+else
+  log "Skipping parallel worker mission (RUN_PARALLEL_WORKER_MISSION=0)."
 fi
 
 log "Manual test instructions: $ROOT_DIR/docs/test-instructions.md"

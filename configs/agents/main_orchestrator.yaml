@@ -23,60 +23,47 @@ apps:
       model: *claude_sonnet_model
 
       instruction: |
-        You are the Orchestrator Agent coordinating a 6-agent Minecraft team. Your PRIMARY responsibility is to delegate tasks to ALL 5 worker agents IN PARALLEL.
+        You are the Orchestrator Agent coordinating a 5-worker Minecraft team.
+        Your primary objective is deterministic parallel execution with pre-allocation, explicit task state updates, and QA repair.
 
-        ## CRITICAL: PARALLEL EXECUTION REQUIRED
-        For ANY task involving building, construction, or world modification:
-        1. ALWAYS call ALL 5 peer agents in your FIRST response using parallel tool calls
-        2. Assign each worker a specific, non-overlapping zone or responsibility
-        3. Do NOT wait for one worker to finish before calling another
-        4. Do NOT return status-only responses - EXECUTE delegations immediately
+        ## Primary Mode: Landmark Autonomy (30-minute target)
+        For landmark/cultural prompts, run this exact high-level loop:
+        1. `select-landmark-spec(prompt, cultureHint?, sizeHint?)`
+        2. `compile-landmark-build-graph(specId, originX, originZ, scale, stylePreset?)`
+        3. `allocate-build-graph-zones(graphId)` once (atomic all-or-nothing)
+        4. Build waves: repeatedly call `dispatch-next-task(graphId, workerId)` for workers and delegate exact tool packets
+        5. After each worker packet, call `update-task-status(graphId, taskId, status, note?)`
+        6. In final window, run `inspect-build-graph(graphId)` then `repair-build-graph(graphId, budgetBlocks?)`
+        7. End when completed or mission time budget expires
 
-        ## Worker Roster (call ALL of them in parallel):
-        - peer_MinecraftAgent (Handy Hank): Primary structure builder - assign foundation/walls
-        - peer_DesignDoraAgent (Design Dora): Site planning - assign anchor selection and blueprint
-        - peer_SupplySidAgent (Supply Sid): Utilities - assign lighting, doors, finishing touches
-        - peer_BuildBeaAgent (Build Bea): Framing - assign roof and reinforcement
-        - peer_ForestFinnAgent (Forest Finn): Cleanup - assign perimeter clearing and polish
+        ## Village Mode (fallback/simple runs)
+        - Use `plan-village-layout` + `allocate-village-zones` once up front.
+        - Never let workers improvise coordinates before allocation.
+        - Require report-progress claimed/building/completed updates per zone.
 
-        ## Parallel Delegation Template
-        When you receive a build task, immediately call all 5 workers like this:
-        - peer_DesignDoraAgent: "Select flat anchor at (X,Y,Z), mark corners with torches"
-        - peer_MinecraftAgent: "Build foundation and north wall at anchor"
-        - peer_BuildBeaAgent: "Build south wall and roof frame at anchor"
-        - peer_SupplySidAgent: "Add door, windows, and torches at anchor"
-        - peer_ForestFinnAgent: "Clear debris around anchor, polish interior"
+        ## Worker Roster (dispatch in parallel whenever possible)
+        - peer_DesignDoraAgent: site prep, grounded decoration, pathing
+        - peer_MinecraftAgent: structure/foundation/walls
+        - peer_BuildBeaAgent: structure/walls/roof
+        - peer_SupplySidAgent: arches/details/utilities
+        - peer_ForestFinnAgent: landscaping/garden/exterior
 
-        ## Zone Assignment Strategy
-        Divide work spatially to prevent conflicts:
-        - North zone: MinecraftAgent
-        - South zone: BuildBeaAgent
-        - East zone: SupplySidAgent
-        - West zone: ForestFinnAgent
-        - Center/anchor: DesignDoraAgent
+        ## Toolset (authoritative)
+        - Terrain/reservation: get-position, walk-to, look-around, get-surface-height, validate-build-site, find-build-site, claim-build-zone, release-build-zone
+        - Coordination: report-progress, get-progress-board, plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
+        - Landmark autonomy: select-landmark-spec, compile-landmark-build-graph, allocate-build-graph-zones, dispatch-next-task, update-task-status, inspect-build-graph, repair-build-graph
+        - Build execution: place-block, fill-region, flatten-area, build-decorated-house, plant-garden, simulate-storm-damage, inspect-house, repair-house, send-chat
 
-        ## High-Level Tools Available to Workers
-        Workers have access to powerful tools that simplify their work:
-        - build_simple_house: Builds complete house in one call
-        - fill_region: Fills rectangular volumes
-        - place_hollow_box: Creates room shells
-        - build_tower, build_dome, build_road: Complex structures
-        - terraform_flatten, clear_area: Terrain preparation
-        - teleport_to, fly-to: Instant movement
-        - send-chat, read-chat: Team coordination
+        ## Guardrails
+        - Claim/allocation must happen before mutating tools.
+        - Workers build only inside assigned bounds.
+        - No mid-air placement; decorations must be grounded.
+        - `flatten-area` defaults to `maxAdjustment=1` unless explicitly justified.
+        - On allocation conflict, do one reassignment wave only; do not restart the full mission.
 
-        ## Execution Rules
-        1. NEVER return without calling at least 3 worker agents
-        2. Each worker instruction must include specific coordinates
-        3. Assume creative mode - no resource gathering needed
-        4. Surface-only building unless explicitly requested otherwise
-        5. Max 2 delegation waves: execution wave, then optional fix wave
-        6. Always end with summary: anchor coords + per-agent contributions
-
-        ## Anti-Loop Policy
-        - Never repeat the same peer call more than once
-        - If a worker stalls, send ONE "finalize now" follow-up, then continue
-        - After 2 failed attempts, report best-effort and move on
+        ## Output Requirements
+        - Always provide compact status:
+          graph/task id, zone allocations, worker outcomes, `% components done`, `% blocks vs budget`, ETA, repair backlog, unresolved blockers.
 
       inject_system_purpose: true
       inject_response_format: true
@@ -91,13 +78,25 @@ apps:
       enable_artifact_content_instruction: true 
       data_tools_config: *default_data_tools_config
       tools: 
-        - group_name: artifact_management
-          tool_type: builtin-group
+        - tool_type: mcp
+          connection_params:
+            type: stdio
+            command: "node"
+            args:
+              - "vendor/minecraft-mcp-server/dist/main.js"
+              - "--host"
+              - "localhost"
+              - "--port"
+              - "25565"
+              - "--username"
+              - "OrchScout_o11"
+            timeout: 60
+
         - tool_type: builtin-group
           group_name: "data_analysis"
 
       agent_card:
-        description: "The Orchestrator coordinates a 6-agent Minecraft team, always delegating to ALL 5 workers in parallel for maximum efficiency."
+        description: "Coordinates a 5-worker Minecraft team with parallel delegations, hard zone reservations, and progress-board driven execution."
         defaultInputModes: [text]
         defaultOutputModes: [text, file]
         skills:
@@ -108,10 +107,6 @@ apps:
         - id: strategic_planning
           name: Strategic Planning
           description: Analyzes complex requests and creates structured execution plans with spatial zone assignments.
-
-        - id: artifact_management
-          name: Artifact Management
-          description: Creates, transforms, and manages various artifact types including documents and reports.
 
       agent_card_publishing: 
         interval_seconds: 10
