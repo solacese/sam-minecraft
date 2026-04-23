@@ -1,4 +1,4 @@
-# Solace Agent Mesh — Minecraft Demo
+# Solace Agent Mesh + Minecraft Demo
 
 **Seven AI agents collaborate in real-time to build landmarks and villages in Minecraft.**
 
