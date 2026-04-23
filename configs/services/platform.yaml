@@ -28,7 +28,8 @@ apps:
       cors_allowed_origins:
         - "http://localhost:3000"
         - "http://127.0.0.1:3000"
-        - "http://localhost:8000"
+        - "${WEBUI_ORIGIN, http://127.0.0.1:8000}"
+        - "${WEBUI_ORIGIN_ALT, http://localhost:8000}"
 
       # --- Message Size Configuration ---
       max_message_size_bytes: ${MAX_MESSAGE_SIZE_BYTES, 10000000}

@@ -4,7 +4,7 @@
   "name": "Roman Colosseum",
   "culture": "it",
   "description": "Massive oval amphitheater with tiered arches and arena floor.",
-  "keywords": ["colosseum", "rome", "roman", "amphitheater", "arena", "gladiator", "ancient"],
+  "keywords": ["colosseum", "rome", "roman", "italy", "italian", "amphitheater", "arena", "gladiator", "ancient"],
   "defaultStyle": "stone_ancient",
   "styles": {
     "stone_ancient": {

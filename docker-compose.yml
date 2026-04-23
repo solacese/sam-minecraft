@@ -16,7 +16,11 @@ services:
       MEMORY: "2G"
       SEED: "3118288038295769423"
       LEVEL_TYPE: "minecraft:single_biome_surface"
-      GENERATOR_SETTINGS: '{"biome":"minecraft:plains"}'
+      GENERATOR_SETTINGS: >-
+        {
+          "biome": "minecraft:plains"
+        }
+      GENERATE_STRUCTURES: "false"
       MODE: "creative"
       DIFFICULTY: "peaceful"
       FORCE_GAMEMODE: "TRUE"

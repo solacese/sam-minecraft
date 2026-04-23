@@ -3,6 +3,7 @@ import {
   classifyBlockNature,
   enforceDensityGuard,
   assessManMadeDensity,
+  shouldEnforceOccupiedAreaGuard,
   validateSafetyLimits
 } from '../src/build-safety.js';
 import { normalizeBounds } from '../src/build-coordination.js';
@@ -48,4 +49,20 @@ test('enforceDensityGuard throws when manmade ratio is too high', (t) => {
     ratio: 1
   }));
   t.truthy(error?.message.includes('occupied'));
+});
+
+test('shouldEnforceOccupiedAreaGuard only runs for destructive edits', (t) => {
+  const bounds = normalizeBounds(0, 63, 0, 10, 68, 10);
+
+  t.false(shouldEnforceOccupiedAreaGuard({
+    bounds,
+    plannedOperations: 500,
+    plannedAirOperations: 0
+  }));
+
+  t.true(shouldEnforceOccupiedAreaGuard({
+    bounds,
+    plannedOperations: 120,
+    plannedAirOperations: 4
+  }));
 });

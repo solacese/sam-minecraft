@@ -3,15 +3,21 @@ set -eu
 
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 cd "$ROOT_DIR"
+COORDINATION_DIR="/tmp/sam-minecraft-coordination"
+LOCAL_RUNTIME_DB_FILES="orchestrator.db webui_gateway.db platform.db"
+LOCAL_RUNTIME_LOG_FILES="sam.log platform_service.log start-demo-runtime.log"
 
 SAM_PID=""
 CLEANED_UP=0
 RUN_INTERESTING_MISSION="${RUN_INTERESTING_MISSION:-0}"
 RUN_PARALLEL_WORKER_MISSION="${RUN_PARALLEL_WORKER_MISSION:-0}"
 RUN_STARTUP_SMOKE="${RUN_STARTUP_SMOKE:-0}"
-AGENT_USERS="HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32"
-BASE_ADMIN_USERS="Noptus noptus raphaelcaillon HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32"
+START_WORLD_RESET_MODE="${START_WORLD_RESET_MODE:-auto}"
+AGENT_USERS="HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32 MonumentMarc_m9"
+BASE_ADMIN_USERS="Noptus noptus raphaelcaillon HandyHank_l33 DesignDora_l4s SupplySid_l31 BuildBea_l33 ForestFinn_q32 MonumentMarc_m9"
 SEEDED_USERS=""
+WEBUI_PORT=""
+WEBUI_URL=""
 
 log() {
   printf '[start-demo] %s\n' "$1"
@@ -22,6 +28,35 @@ require_cmd() {
     printf 'Missing required command: %s\n' "$1" >&2
     exit 1
   fi
+}
+
+patch_sam_peer_tool_prefix() {
+  patch_output="$(
+    ./.venv/bin/python - <<'PY'
+from pathlib import Path
+import importlib.util
+
+spec = importlib.util.find_spec("solace_agent_mesh.agent.tools.peer_agent_tool")
+if spec is None or spec.origin is None:
+    print("peer_tool_patch=missing")
+    raise SystemExit(0)
+
+path = Path(spec.origin)
+text = path.read_text()
+needle = 'PEER_TOOL_PREFIX = "peer_"'
+replacement = 'PEER_TOOL_PREFIX = "peer-"'
+if replacement in text:
+    print(f"peer_tool_patch=ok path={path}")
+    raise SystemExit(0)
+if needle not in text:
+    print(f"peer_tool_patch=skipped path={path}")
+    raise SystemExit(0)
+
+path.write_text(text.replace(needle, replacement, 1))
+print(f"peer_tool_patch=updated path={path}")
+PY
+  )"
+  log "$patch_output"
 }
 
 check_litellm_config() {
@@ -35,14 +70,14 @@ Please set your LiteLLM API key before running this script:
 
 Default configuration:
   - API Base: https://lite-llm.mymaas.net
-  - Model: bedrock-claude-4-5-sonnet
+  - Primary models: Sonnet for orchestrator/builders, Haiku for lightweight exterior workers
 
 Then run this script again.
 TXT
     exit 1
   fi
   
-  model_name="${LITELLM_MODEL:-openai/bedrock-claude-4-5-sonnet}"
+  model_name="orchestrator/builders=${LITELLM_MODEL_SONNET:-openai/bedrock-claude-4-5-sonnet-tools}, decorators=${LITELLM_MODEL_HAIKU:-openai/bedrock-claude-4-5-haiku-tools}"
   api_base="${LITELLM_API_BASE:-https://lite-llm.mymaas.net}"
   log "LiteLLM configuration verified (model: ${model_name}, api: ${api_base})"
 }
@@ -68,7 +103,176 @@ ensure_session_secret_key() {
   fi
 }
 
+reset_world_for_startup() {
+  mode="$(printf '%s' "${START_WORLD_RESET_MODE}" | tr '[:upper:]' '[:lower:]')"
+
+  case "$mode" in
+    preserve|none|skip)
+      log "Preserving current world volume for startup..."
+      ;;
+    ""|auto)
+      log "Resetting world before startup with a new persisted seed..."
+      bash "$ROOT_DIR/reset-world.sh" auto
+      ;;
+    keep|same)
+      log "Resetting world before startup while keeping the current persisted seed..."
+      bash "$ROOT_DIR/reset-world.sh"
+      ;;
+    *)
+      log "Resetting world before startup with seed mode '${START_WORLD_RESET_MODE}'..."
+      bash "$ROOT_DIR/reset-world.sh" "$START_WORLD_RESET_MODE"
+      ;;
+  esac
+}
+
+clear_coordination_state() {
+  log "Clearing scheduler coordination state..."
+  rm -rf "$COORDINATION_DIR"
+}
+
+clear_runtime_databases() {
+  log "Clearing persisted SAM runtime databases..."
+  for db_file in $LOCAL_RUNTIME_DB_FILES; do
+    rm -f "$ROOT_DIR/$db_file"
+  done
+}
+
+reset_runtime_logs() {
+  log "Resetting runtime logs..."
+  for log_file in $LOCAL_RUNTIME_LOG_FILES; do
+    : > "$ROOT_DIR/$log_file"
+  done
+}
+
+terminate_stale_local_processes() {
+  log "Terminating stale local launcher/runtime processes..."
+  cleanup_output="$(
+    python3 - "$$" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+import time
+
+current_pid = int(sys.argv[1])
+patterns = [
+    "./.venv/bin/sam run configs/",
+    "vendor/minecraft-mcp-server/dist/main.js --host localhost --port 25565 --username ",
+    "npm run grabcraft:place --input ",
+    "tsx src/grabcraft-place.ts --input ",
+]
+
+try:
+    ps_output = subprocess.check_output(["ps", "-axo", "pid=,command="], text=True)
+except subprocess.CalledProcessError as exc:
+    print(f"stale_process_cleanup=error detail={exc}")
+    raise SystemExit(0)
+
+victims = []
+for raw_line in ps_output.splitlines():
+    line = raw_line.strip()
+    if not line:
+        continue
+    parts = line.split(None, 1)
+    if len(parts) != 2:
+        continue
+    pid = int(parts[0])
+    cmd = parts[1]
+    if pid == current_pid:
+        continue
+    if any(pattern in cmd for pattern in patterns):
+        victims.append((pid, cmd))
+
+for pid, _ in victims:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+deadline = time.time() + 5.0
+survivors = victims
+while survivors and time.time() < deadline:
+    remaining = []
+    for pid, cmd in survivors:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            continue
+        remaining.append((pid, cmd))
+    survivors = remaining
+    if survivors:
+        time.sleep(0.2)
+
+for pid, _ in survivors:
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+
+if victims:
+    print(
+        "stale_process_cleanup=ok "
+        f"terminated={len(victims)} "
+        f"pids={','.join(str(pid) for pid, _ in victims)}"
+    )
+else:
+    print("stale_process_cleanup=ok terminated=0")
+PY
+  )"
+  log "$cleanup_output"
+}
+
+wait_for_stale_launcher_exit() {
+  log "Waiting for stale launcher shells to exit..."
+  wait_output="$(
+    python3 - "$$" <<'PY'
+import subprocess
+import sys
+import time
+
+current_pid = int(sys.argv[1])
+patterns = [
+    "sh ./start-demo.sh",
+    "bash ./start-demo.sh",
+    "zsh ./start-demo.sh",
+]
+
+deadline = time.time() + 8.0
+remaining = []
+while time.time() < deadline:
+    ps_output = subprocess.check_output(["ps", "-axo", "pid=,command="], text=True)
+    remaining = []
+    for raw_line in ps_output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        pid = int(parts[0])
+        cmd = parts[1]
+        if pid == current_pid:
+            continue
+        if any(pattern in cmd for pattern in patterns):
+          remaining.append(str(pid))
+    if not remaining:
+        print("stale_launcher_wait=ok remaining=0")
+        raise SystemExit(0)
+    time.sleep(0.25)
+
+print(f"stale_launcher_wait=timeout remaining={','.join(remaining)}")
+PY
+  )"
+  log "$wait_output"
+}
+
 port_available() {
+  if command -v lsof >/dev/null 2>&1; then
+    if lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; then
+      return 1
+    fi
+  fi
+
   python3 - "$1" <<'PY'
 import socket
 import sys
@@ -83,6 +287,46 @@ except OSError:
 finally:
     s.close()
 PY
+}
+
+pick_webui_port() {
+  preferred_port="${FASTAPI_PORT:-8000}"
+  platform_port="${PLATFORM_API_PORT:-8001}"
+
+  if [ "$preferred_port" != "$platform_port" ] && port_available "$preferred_port"; then
+    WEBUI_PORT="$preferred_port"
+    return 0
+  fi
+
+  port="$preferred_port"
+  attempts=0
+  while [ "$attempts" -lt 20 ]; do
+    port=$((port + 1))
+    if [ "$port" != "$platform_port" ] && port_available "$port"; then
+      WEBUI_PORT="$port"
+      return 0
+    fi
+    attempts=$((attempts + 1))
+  done
+
+  echo "No free WebUI port found starting from ${preferred_port}." >&2
+  exit 1
+}
+
+ensure_webui_port_config() {
+  requested_port="${FASTAPI_PORT:-8000}"
+  pick_webui_port
+
+  export FASTAPI_PORT="$WEBUI_PORT"
+  export WEBUI_ORIGIN="${WEBUI_ORIGIN:-http://127.0.0.1:${WEBUI_PORT}}"
+  export WEBUI_ORIGIN_ALT="${WEBUI_ORIGIN_ALT:-http://localhost:${WEBUI_PORT}}"
+  WEBUI_URL="http://127.0.0.1:${WEBUI_PORT}"
+
+  if [ "$WEBUI_PORT" != "$requested_port" ]; then
+    log "Port ${requested_port} is busy; using WebUI port ${WEBUI_PORT} instead."
+  else
+    log "Using WebUI port ${WEBUI_PORT}."
+  fi
 }
 
 minecraft_dns_failure_detected() {
@@ -140,7 +384,7 @@ extract_delegated_peers_from_log() {
     NR <= s { next }
     index($0, "RetriggerManager:" task) {
       line = $0
-      while (match(line, /peer_[A-Za-z0-9_]+/)) {
+      while (match(line, /peer[-_][A-Za-z0-9_]+/)) {
         print substr(line, RSTART, RLENGTH)
         line = substr(line, RSTART + RLENGTH)
       }
@@ -253,14 +497,15 @@ wait_for_agent_cards() {
   log "Waiting for SAM agent discovery..."
   i=0
   while [ "$i" -lt 45 ]; do
-    cards_json="$(curl -fsS http://127.0.0.1:8000/api/v1/agentCards 2>/dev/null || true)"
+    cards_json="$(curl -fsS "${WEBUI_URL}/api/v1/agentCards" 2>/dev/null || true)"
     if [ -n "$cards_json" ] &&
       printf '%s' "$cards_json" | grep -q '"name":"OrchestratorAgent"' &&
       printf '%s' "$cards_json" | grep -q '"name":"MinecraftAgent"' &&
       printf '%s' "$cards_json" | grep -q '"name":"DesignDoraAgent"' &&
       printf '%s' "$cards_json" | grep -q '"name":"SupplySidAgent"' &&
       printf '%s' "$cards_json" | grep -q '"name":"BuildBeaAgent"' &&
-      printf '%s' "$cards_json" | grep -q '"name":"ForestFinnAgent"'; then
+      printf '%s' "$cards_json" | grep -q '"name":"ForestFinnAgent"' &&
+      printf '%s' "$cards_json" | grep -q '"name":"MonumentMarcAgent"'; then
       log "Agent discovery is ready."
       return 0
     fi
@@ -298,32 +543,37 @@ worker_nudge_prompt() {
   case "$1" in
     DesignDoraAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (20, 20). Then run find-build-site with centerX=20 centerZ=20 width=15 depth=15 searchRadius=12 maxHeightDelta=2. Claim that exact footprint as zoneId="design_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress with taskId="manual-nudge", zoneId="design_zone", phase="claimed". Then flatten-area on that exact x/z footprint with material="grass_block" and maxAdjustment=1. Then place only ground markers: flowers/torches at surface level and gravel path blocks on ground layer (no roofs/walls/air). Then report-progress phase="completed" and send-chat with final footprint coordinates.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, flatten-area inside it with material="grass_block" and use maxAdjustment=2 only if the zone is still dry land and needs it, otherwise use 1. Then place only ground markers: flowers/torches at surface level and gravel path blocks on ground layer (no roofs/walls/air). Then report-progress phase="completed" and send-chat with final footprint coordinates.
 EOF
       ;;
     SupplySidAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (20, 35). Then run find-build-site with centerX=20 centerZ=40 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="sid_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="sid_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="birch". Then report-progress phase="completed" and send-chat.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, report-progress with taskId="manual-nudge", zoneId equal to your assigned zone id, phase="building", note="working assigned structure zone", then use build-decorated-house centered inside the assigned footprint with style="birch". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     MinecraftAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (25, 25). Then run find-build-site with centerX=32 centerZ=22 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="hank_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="hank_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="oak". Then report-progress phase="completed" and send-chat.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, report-progress with taskId="manual-nudge", zoneId equal to your assigned zone id, phase="building", note="working assigned structure zone", then use build-decorated-house centered inside the assigned footprint with style="oak". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     BuildBeaAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (35, 20). Then run find-build-site with centerX=42 centerZ=36 width=7 depth=7 searchRadius=16 maxHeightDelta=1. Claim that exact footprint as zoneId="bea_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="bea_zone", phase="claimed". Then use build-decorated-house at the found center coordinates with style="spruce". Then report-progress phase="completed" and send-chat.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, report-progress with taskId="manual-nudge", zoneId equal to your assigned zone id, phase="building", note="working assigned structure zone", then use build-decorated-house centered inside the assigned footprint with style="spruce". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     ForestFinnAgent)
       cat <<'EOF'
-Use walk-to to go to coordinates (30, 30). Then run find-build-site with centerX=32 centerZ=42 width=13 depth=13 searchRadius=14 maxHeightDelta=1. Claim that exact footprint as zoneId="finn_zone" using y1=baseY-1 and y2=baseY+7 from the tool output. Then report-progress taskId="manual-nudge", zoneId="finn_zone", phase="claimed". Then use plant-garden at the found center coordinates with size=3. Then report-progress phase="completed" and send-chat.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, report-progress with taskId="manual-nudge", zoneId equal to your assigned zone id, phase="building", note="working assigned garden zone", then use plant-garden centered inside the assigned footprint with size=3. Then report-progress phase="completed" and send-chat.
+EOF
+      ;;
+    MonumentMarcAgent)
+      cat <<'EOF'
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with taskId="manual-nudge", zoneId="unassigned", phase="blocked", note="need orchestrator assignment", then send-chat asking OrchestratorAgent for a zone and stop. If a zone is assigned, walk to that zone, report-progress with taskId="manual-nudge", zoneId equal to your assigned zone id, phase="building", note="working assigned monument shard zone", then use fill-region inside the assigned footprint with material="minecraft:stone_bricks". Then report-progress phase="completed" and send-chat.
 EOF
       ;;
     *)
       cat <<'EOF'
-Use get-position first. Then validate-build-site for a small intended footprint. If invalid, use find-build-site nearby. Then claim-build-zone for that exact validated footprint. Then report-progress phase="claimed". Then use build-decorated-house or plant-garden inside your claimed zone. Then report-progress phase="completed" and send-chat.
+Use get-my-build-zones first. If no zone is assigned to you, report-progress with phase="blocked" and ask OrchestratorAgent for an assignment. If a zone is assigned, work only inside that zone, then report-progress phase="completed" and send-chat.
 EOF
       ;;
   esac
@@ -337,7 +587,7 @@ run_worker_nudge() {
 
   log "${reason} for ${agent}; running direct worker nudge..."
   if ! ./.venv/bin/sam task send \
-    --url http://127.0.0.1:8000 \
+    --url "${WEBUI_URL}" \
     --agent "$agent" \
     --timeout 300 \
     --quiet \
@@ -358,10 +608,10 @@ worker_has_required_activity_since() {
 
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: report-progress" || return 1
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (get-position|walk-to|get-surface-height)" || return 1
-  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (claim-build-zone|get-progress-board)"; then
+  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (get-my-build-zones|get-progress-board)"; then
     return 1
   fi
-  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (validate-build-site|find-build-site|get-progress-board)"; then
+  if ! log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (validate-build-site|find-build-site|get-my-build-zones|get-progress-board)"; then
     return 1
   fi
   log_contains_since "$start_line" "AgentID: ${agent}, ToolName: (place-block|fill-region|flatten-area|build-decorated-house|plant-garden)" || return 1
@@ -371,7 +621,7 @@ worker_has_required_activity_since() {
 ensure_worker_activity_since() {
   start_line="$1"
 
-  for agent in DesignDoraAgent SupplySidAgent MinecraftAgent BuildBeaAgent ForestFinnAgent; do
+  for agent in DesignDoraAgent SupplySidAgent MinecraftAgent BuildBeaAgent ForestFinnAgent MonumentMarcAgent; do
     if worker_has_required_activity_since "$agent" "$start_line"; then
       log "${agent} activity confirmed (reservation check + progress + world action + send-chat)."
       continue
@@ -383,7 +633,7 @@ ensure_worker_activity_since() {
 
 zone_conflict_detected_since() {
   start_line="$1"
-  log_contains_since "$start_line" "Zone claim conflict|Operation overlaps zone|not fully reserved|claim-build-zone first"
+  log_contains_since "$start_line" "Zone claim conflict|Operation overlaps zone|not fully reserved|not fully preassigned|orchestrator-only"
 }
 
 run_reassignment_wave() {
@@ -395,8 +645,8 @@ A worker reported a zone reservation conflict: ${reason}
 
 Run exactly one reassignment wave now:
 1) Re-plan only the conflicting worker(s) to new non-overlapping coordinates.
-2) Every reassigned worker must call claim-build-zone before mutating tools, and the claim must match only the structure footprint (no extra buffer).
-3) Every reassigned worker must call report-progress with phases "reassigned" and "completed".
+2) Only OrchestratorAgent may assign the replacement zone, using allocate-village-zones or claim-build-zone assignedTo="<worker>".
+3) Reassigned workers must use get-my-build-zones before mutating tools and then report-progress with phases "reassigned" and "completed".
 4) Do not restart the entire mission. Continue from current state and finish.
 EOF
 
@@ -405,7 +655,7 @@ EOF
 
   log "Running single reassignment wave for reservation conflicts..."
   if ! ./.venv/bin/sam task send \
-    --url http://127.0.0.1:8000 \
+    --url "${WEBUI_URL}" \
     --agent OrchestratorAgent \
     --timeout 420 \
     --quiet \
@@ -428,42 +678,43 @@ Execute a beautiful village building mission now.
 
 Requirements:
 - FIRST call allocate-village-zones ONCE to reserve all house zones atomically before any worker starts.
-- Use center near X=32, Z=32 with rows=2 cols=2 houseCount=3 houseWidth=7 houseDepth=7 bufferBlocks=2.
-- Use buildersCsv="MinecraftAgent,BuildBeaAgent,SupplySidAgent" and stylesCsv="oak,spruce,birch".
+- Use center near X=32, Z=32 with rows=2 cols=2 houseCount=4 houseWidth=7 houseDepth=7 bufferBlocks=2.
+- Use buildersCsv="MinecraftAgent,BuildBeaAgent,SupplySidAgent,MonumentMarcAgent" and stylesCsv="oak,spruce,birch,stone".
 - Set clearExistingForOwners=true so stale claims do not block this run.
-- Then call ALL 5 peer agents IN PARALLEL in your first delegation response: peer_DesignDoraAgent, peer_SupplySidAgent, peer_MinecraftAgent, peer_BuildBeaAgent, peer_ForestFinnAgent.
+- Then assign support zones yourself with orchestrator-only claims:
+  - claim-build-zone zoneId="design_plaza" assignedTo="DesignDoraAgent"
+  - claim-build-zone zoneId="finn_garden" assignedTo="ForestFinnAgent"
+- Then call ALL 6 peer agents IN PARALLEL in your first delegation response: peer-DesignDoraAgent, peer-SupplySidAgent, peer-MinecraftAgent, peer-BuildBeaAgent, peer-ForestFinnAgent, peer-MonumentMarcAgent.
 - Mission: Build a beautiful village with decorated houses and gardens.
 - All workers MUST report progress phases using report-progress.
 
 Agent assignments:
-- MinecraftAgent / BuildBea / SupplySid: each receives one allocated house zone from allocate-village-zones.
+- MinecraftAgent / BuildBea / SupplySid / MonumentMarc: each receives one allocated house or support structure zone from allocate-village-zones.
   - walk-to assigned center
-  - get-progress-board to confirm assigned zone + bbox
-  - do NOT run claim-build-zone if already pre-claimed for you
+  - use get-my-build-zones to confirm assigned zone + bbox
   - report-progress phase="building"
   - build-decorated-house using assigned style at assigned center
   - report-progress phase="completed"
   - send-chat summary
 - DesignDora: use a separate nearby zone for plaza prep and grounded markers only.
-  - walk-to center near (20,20), validate/find site, claim zone if needed, flatten-area maxAdjustment=1
+  - use get-my-build-zones, walk to the assigned support zone, flatten-area on dry land (prefer maxAdjustment=1, use 2 only when terrain delta requires it)
   - place flowers/torches on surface and path blocks on ground layer
   - report-progress completed and send-chat
 - ForestFinn: use a nearby non-overlapping garden zone.
-  - walk-to center near (28,56), validate/find site, claim zone if needed
+  - use get-my-build-zones, walk to the assigned support zone
   - plant-garden size=3, report-progress completed, send-chat
 
 Every worker must:
 1. First use walk-to
-2. Confirm assigned zone on get-progress-board
-3. Claim only if zone is not already pre-claimed for that worker
-4. Then report-progress taskId="<mission task id or village-mission>" phase="building"
-5. Then perform building tool(s) strictly inside claimed zone
+2. Confirm assigned zone on get-my-build-zones
+3. Then report-progress taskId="<mission task id or village-mission>" phase="building"
+4. Then perform building tool(s) strictly inside assigned zone
    - never place blocks in mid-air; decorations must be grounded
-6. If flatten-area is used, maxAdjustment must be 1
-7. Then report-progress phase="completed"
-8. Finally send-chat summary
+5. If flatten-area is used, prefer maxAdjustment=1; use maxAdjustment=2 only for dry land footprints that need gentle grading
+6. Then report-progress phase="completed"
+7. Finally send-chat summary
 
-If allocation fails, retry allocate-village-zones once with bufferBlocks=3. If any worker still hits a reservation conflict, reassign only that worker once and continue.
+If allocation fails, retry allocate-village-zones once with bufferBlocks=3. If any worker still hits a reservation conflict, reassign only that worker once with an orchestrator-owned zone update and continue.
 Execute delegations NOW. Return final summary with zone IDs and coordinates.
 EOF
   mission_prompt="$(cat "$mission_prompt_file")"
@@ -472,7 +723,7 @@ EOF
   log "Running orchestrated team mission..."
   mission_output_file="$(mktemp)"
   if ! ./.venv/bin/sam task send \
-    --url http://127.0.0.1:8000 \
+    --url "${WEBUI_URL}" \
     --agent OrchestratorAgent \
     --timeout 600 \
     --quiet \
@@ -515,8 +766,8 @@ EOF
     log "Orchestrator delegated peers:$delegated_peers"
   fi
 
-  for agent in DesignDoraAgent SupplySidAgent MinecraftAgent BuildBeaAgent ForestFinnAgent; do
-    peer_name="peer_${agent}"
+  for agent in DesignDoraAgent SupplySidAgent MinecraftAgent BuildBeaAgent ForestFinnAgent MonumentMarcAgent; do
+    peer_name="peer-${agent}"
     case " $delegated_peers " in
       *" $peer_name "*)
         ;;
@@ -636,6 +887,13 @@ check_litellm_config
 ensure_namespace_config
 ensure_sam_dev_mode
 ensure_session_secret_key
+ensure_webui_port_config
+terminate_stale_local_processes
+wait_for_stale_launcher_exit
+reset_world_for_startup
+clear_coordination_state
+clear_runtime_databases
+reset_runtime_logs
 
 if [ ! -d .venv ]; then
   log "Creating Python virtual environment in .venv..."
@@ -644,6 +902,7 @@ fi
 
 log "Installing Python dependencies..."
 ./.venv/bin/pip install -r requirements.txt >/dev/null
+patch_sam_peer_tool_prefix
 
 log "Installing and building local Minecraft MCP server..."
 (
@@ -690,17 +949,17 @@ fi
 apply_world_stability_profile
 
 log "Starting SAM runtime..."
-if ! port_available 8000; then
-  echo "Port 8000 is already in use. Stop the conflicting service and retry." >&2
+if ! port_available "$WEBUI_PORT"; then
+  echo "Port ${WEBUI_PORT} is already in use. Stop the conflicting service and retry." >&2
   exit 1
 fi
 ./.venv/bin/sam run configs/ >> sam.log 2>&1 &
 SAM_PID=$!
 
-log "Waiting for SAM WebUI on http://127.0.0.1:8000 ..."
+log "Waiting for SAM WebUI on ${WEBUI_URL} ..."
 i=0
 while [ "$i" -lt 90 ]; do
-  if curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+  if curl -fsS "${WEBUI_URL}/" >/dev/null 2>&1; then
     break
   fi
   sleep 2
@@ -711,7 +970,7 @@ while [ "$i" -lt 90 ]; do
   i=$((i + 1))
 done
 
-if ! curl -fsS http://127.0.0.1:8000/ >/dev/null 2>&1; then
+if ! curl -fsS "${WEBUI_URL}/" >/dev/null 2>&1; then
   echo "SAM WebUI did not become reachable in time." >&2
   exit 1
 fi
@@ -723,7 +982,7 @@ wait_for_agent_cards
 if [ "$RUN_STARTUP_SMOKE" = "1" ]; then
   log "Running smoke instruction against MinecraftAgent..."
   ./.venv/bin/sam task send \
-    --url http://127.0.0.1:8000 \
+    --url "${WEBUI_URL}" \
     --agent MinecraftAgent \
     --timeout 300 \
     --quiet \
@@ -747,7 +1006,7 @@ else
 fi
 
 log "Manual test instructions: $ROOT_DIR/docs/test-instructions.md"
-log "Web UI: http://127.0.0.1:8000"
+log "Web UI: ${WEBUI_URL}"
 log "Minecraft: localhost:25565"
 log "Press Ctrl+C to stop SAM and the Minecraft container."
 

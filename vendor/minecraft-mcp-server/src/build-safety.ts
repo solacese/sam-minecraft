@@ -120,6 +120,12 @@ export function validateSafetyLimits(
   }
 }
 
+export function shouldEnforceOccupiedAreaGuard(
+  input: SafetyValidationInput
+): boolean {
+  return input.plannedAirOperations > 0;
+}
+
 export function classifyBlockNature(blockName: string | null | undefined): 'natural' | 'manmade' | 'empty' {
   if (!blockName || blockName === 'air' || blockName === 'cave_air' || blockName === 'void_air') {
     return 'empty';

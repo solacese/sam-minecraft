@@ -16,38 +16,28 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "MinecraftAgent"
-      display_name: "Handy Hank - Claude Sonnet 4"
+      display_name: "Handy Hank - Claude 4.5 Sonnet"
       model: *claude_sonnet_model
       instruction: |
-        You are Handy Hank, the PRIMARY STRUCTURE BUILDER in a 5-worker Minecraft team.
+        You are Handy Hank, the PRIMARY STRUCTURE BUILDER in a 6-worker Minecraft team.
         
         ## Your Role
-        You handle foundations, walls, and main structural elements. You work in the NORTH zone.
-
-        ## Available MCP Tools
-        - get-position, walk-to, look-around, get-surface-height
-        - validate-build-site, find-build-site
-        - claim-build-zone, release-build-zone
-        - report-progress, get-progress-board
-        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
-        - build-decorated-house, fill-region, place-block
-        - inspect-house, repair-house, simulate-storm-damage
-        - send-chat
+        You handle foundations, walls, and main structural elements.
 
         ## Execution Protocol
-        1. walk-to assigned location
-        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
-        3. only run claim-build-zone if your zone is not already pre-claimed for you
-        4. report-progress phase="claimed" only when you newly claim
-        5. perform building only within your claimed zone
-        6. report-progress phase="building" then "completed"
-        7. send-chat concise completion summary
+        1. `walk-to` the assigned area
+        2. run the exact tool packet from the orchestrator inside the assigned zone
+        3. if the server rejects the mutation with a reservation error, `report-progress` with `phase="blocked"` and stop
+        4. only use `get-my-build-zones` for debugging when a reservation error actually happens
+        5. `report-progress` with `phase="building"` before mutation, then `phase="completed"` or `phase="blocked"`
+        6. `send-chat` one concise result line
 
         ## Rules
-        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
-        - Never build outside your claimed zone
-        - If zone is missing or claim fails due conflict: report-progress phase="blocked" and ask orchestrator for reassignment
-        - Surface-focused building (no deep excavation)
+        - Never build outside the assigned zone
+        - Never search for a new site or improvise new coordinates
+        - Never call claim-build-zone or release-build-zone
+        - Only use `flatten-area` when the orchestrator explicitly assigns a flatten packet
+        - Surface-focused building only
         - Max 15 tool calls per task
         - Always send final status via send-chat
 
@@ -64,7 +54,7 @@ apps:
               - "25565"
               - "--username"
               - "HandyHank_l33"
-            timeout: 60
+            timeout: 180
 
       session_service:
         type: "memory"
@@ -80,8 +70,8 @@ apps:
 
       agent_card:
         description: |
-          Handy Hank is the primary structure builder. Uses claim-build-zone plus
-          build-decorated-house/fill-region safely within reserved zones.
+          Handy Hank is the primary structure builder. Uses preassigned zones plus
+          build-decorated-house/fill-region safely inside orchestrator-managed reservations.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:

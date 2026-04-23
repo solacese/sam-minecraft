@@ -10,18 +10,27 @@ shared_config:
   - models:
     # Claude 4.5 Sonnet via LiteLLM proxy (OpenAI-compatible)
     claude_sonnet: &claude_sonnet_model
-      model: ${LITELLM_MODEL, openai/bedrock-claude-4-5-sonnet}
+      model: ${LITELLM_MODEL_SONNET, openai/bedrock-claude-4-5-sonnet-tools}
       api_key: ${LITELLM_API_KEY}
       api_base: ${LITELLM_API_BASE, https://lite-llm.mymaas.net}
       cache_strategy: "5m"
       parallel_tool_calls: true
+      tool_choice: ${LITELLM_TOOL_CHOICE, auto}
 
-    # Alias for backward compatibility
+    # Claude 4.5 Haiku via LiteLLM proxy (OpenAI-compatible)
+    claude_haiku: &claude_haiku_model
+      model: ${LITELLM_MODEL_HAIKU, openai/bedrock-claude-4-5-haiku-tools}
+      api_key: ${LITELLM_API_KEY}
+      api_base: ${LITELLM_API_BASE, https://lite-llm.mymaas.net}
+      cache_strategy: "5m"
+      parallel_tool_calls: true
+      tool_choice: ${LITELLM_TOOL_CHOICE, auto}
+
     planning: &planning_model
       <<: *claude_sonnet_model
 
     general: &general_model
-      <<: *claude_sonnet_model
+      <<: *claude_haiku_model
 
     image_gen: &image_generation_model
       model: ${IMAGE_MODEL_NAME, dall-e-3}
@@ -32,7 +41,7 @@ shared_config:
       <<: *claude_sonnet_model
 
     multimodal: &multimodal_model
-      <<: *claude_sonnet_model
+      <<: *claude_haiku_model
 
   - services:
     # Default session service configuration

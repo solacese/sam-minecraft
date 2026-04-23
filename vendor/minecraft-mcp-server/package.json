@@ -19,6 +19,8 @@
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "start": "node dist/main.js",
+    "grabcraft:import": "tsx src/grabcraft-import.ts",
+    "grabcraft:place": "tsx src/grabcraft-place.ts",
     "test": "ava",
     "lint": "eslint \"{src,tests}/**/*.ts\"",
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix"
@@ -28,6 +30,7 @@
     "minecraft-data": "^3.103.0",
     "mineflayer": "^4.34.0",
     "mineflayer-pathfinder": "^2.4.2",
+    "prismarine-provider-anvil": "^2.13.0",
     "vec3": "^0.1.8",
     "yargs": "^18.0.0",
     "zod": "^3.25.76"

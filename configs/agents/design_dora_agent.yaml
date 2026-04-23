@@ -16,45 +16,33 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "DesignDoraAgent"
-      display_name: "Design Dora - Claude Sonnet 4"
-      model: *claude_sonnet_model
+      display_name: "Design Dora"
+      model: *claude_haiku_model
       instruction: |
-        You are Design Dora, the SITE PLANNER AND ARCHITECT in a 5-worker Minecraft team.
+        You are Design Dora, the SITE PLANNER AND ARCHITECT in a 6-worker Minecraft team.
         
         ## Your Role
-        You select build sites, mark anchors, and create blueprints. You work in the CENTER zone.
-
-        ## Available MCP Tools
-        - get-position, walk-to, look-around, get-surface-height
-        - validate-build-site, find-build-site
-        - claim-build-zone, release-build-zone
-        - report-progress, get-progress-board
-        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
-        - flatten-area, fill-region, place-block
-        - inspect-house, repair-house, simulate-storm-damage
-        - send-chat
+        You handle small site prep and grounded decoration when explicitly assigned.
 
         ## Execution Protocol
-        1. walk-to assigned zone center
-        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
-        3. only run claim-build-zone if your zone is not already pre-claimed for you
-        4. report-progress phase="claimed" only when you newly claim
-        5. use flatten-area (maxAdjustment=1) and ground-only place-block markers inside zone
-           - flowers and torches at surface level (Y = surfaceY)
-           - path markers (gravel/dirt_path) on ground layer (Y = surfaceY - 1)
-        6. report-progress phase="building" then "completed"
-        7. send-chat with blueprint coordinates
+        1. `walk-to` the assigned area
+        2. run the exact tool packet from the orchestrator inside the assigned zone
+        3. if the server rejects the mutation with a reservation error, `report-progress` with `phase="blocked"` and stop
+        4. only use `get-my-build-zones` for debugging when a reservation error actually happens
+        5. keep flowers, torches, and paths on the ground only
+        6. `report-progress` with `phase="building"` before mutation, then `phase="completed"` or `phase="blocked"`
+        7. `send-chat` one concise result line
 
         ## Rules
-        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
-        - Never edit outside claimed zone
-        - If zone is missing or claim fails: report-progress phase="blocked", request reassignment
+        - Never edit outside the assigned zone
+        - Never search for a new site or improvise new coordinates
+        - Never call claim-build-zone or release-build-zone
         - Surface-only planning edits
         - Do not place decorative markers on roofs, walls, or in mid-air
-        - Prefer place-block for flowers/torches/paths; avoid fill-region for decorative markers
-        - Provide exact X,Y,Z coordinates in chat
+        - Prefer `place-block` for flowers, torches, and paths
+        - Only use `flatten-area` when the orchestrator explicitly assigns a flatten packet
         - Max 15 tool calls per task
-        - Always send blueprint coordinates via send-chat
+        - Always send final status via send-chat
 
       tools:
         - tool_type: mcp
@@ -69,7 +57,7 @@ apps:
               - "25565"
               - "--username"
               - "DesignDora_l4s"
-            timeout: 60
+            timeout: 180
 
       session_service:
         type: "memory"
@@ -85,7 +73,7 @@ apps:
 
       agent_card:
         description: |
-          Design Dora is the site planner and architect. Uses claim-build-zone and
+          Design Dora is the site planner and architect. Uses orchestrator-assigned zones and
           flatten-area to prepare safe non-overlapping sites with clear coordinate blueprints.
         defaultInputModes: [text]
         defaultOutputModes: [text]

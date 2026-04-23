@@ -101,7 +101,7 @@ test('verifyReservation requires full coverage by owner claim', async (t) => {
     normalizeBounds(18, 65, 18, 28, 80, 28)
   );
   t.false(notCovered.ok);
-  t.truthy(notCovered.message.includes('not fully reserved'));
+  t.truthy(notCovered.message.includes('not fully'));
 });
 
 test('verifyReservation is footprint-based (x/z) regardless of y span', async (t) => {
@@ -215,6 +215,46 @@ test('claimZonesBatch allocates all zones atomically for parallel workers', asyn
 
   t.true(verifyHank.ok);
   t.true(verifyBea.ok);
+});
+
+test('claimZonesBatch allows touching landmark subzones when spacing is zero', async (t) => {
+  const { store, baseDir } = await createTempStore();
+  t.teardown(async () => fs.rm(baseDir, { recursive: true, force: true }));
+
+  const result = await store.claimZonesBatch(
+    [
+      {
+        owner: 'HandyHank_l33',
+        zoneId: 'tower_base_west',
+        bounds: normalizeBounds(0, 60, 0, 6, 90, 6),
+        ttlSeconds: 600,
+        spacingBlocks: 0
+      },
+      {
+        owner: 'BuildBea_l33',
+        zoneId: 'tower_base_east',
+        bounds: normalizeBounds(7, 60, 0, 13, 90, 6),
+        ttlSeconds: 600,
+        spacingBlocks: 0
+      }
+    ],
+    { clearExistingForOwners: true }
+  );
+
+  t.true(result.ok);
+  t.is(result.claims.length, 2);
+
+  const verifyWest = await store.verifyReservation(
+    'HandyHank_l33',
+    normalizeBounds(1, 65, 1, 5, 80, 5)
+  );
+  const verifyEast = await store.verifyReservation(
+    'BuildBea_l33',
+    normalizeBounds(8, 65, 1, 12, 80, 5)
+  );
+
+  t.true(verifyWest.ok);
+  t.true(verifyEast.ok);
 });
 
 test('claimZonesBatch fails without partial writes when one zone conflicts', async (t) => {

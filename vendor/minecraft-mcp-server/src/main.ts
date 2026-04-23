@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Vec3 } from 'vec3';
 import pathfinderPkg from 'mineflayer-pathfinder';
 import path from 'node:path';
+import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { setupStdioFiltering } from './stdio-filter.js';
 import { log } from './logger.js';
@@ -24,9 +25,12 @@ import {
   assessManMadeDensity,
   classifyBlockNature,
   enforceDensityGuard,
+  getVolume,
+  shouldEnforceOccupiedAreaGuard,
   validateSafetyLimits
 } from './build-safety.js';
 import { BlockPlacementQueue } from './block-placement-queue.js';
+import { buildFillBatches } from './fill-batching.js';
 import {
   latestZonePhase,
   planVillageLayout,
@@ -39,9 +43,32 @@ import {
 } from './placement-guard.js';
 import {
   LandmarkAutonomyService,
-  formatDispatchTask
+  formatDispatchTask,
+  type BuildGraph,
+  type BuildGraphNode,
+  type SelectLandmarkResult
 } from './landmark-autonomy.js';
 import { TemplateGeneratorService } from './template-generator.js';
+import {
+  GrabCraftLookupService,
+  type GrabCraftLookupCandidate,
+  type GrabCraftLookupResult
+} from './grabcraft-lookup.js';
+import {
+  importGrabCraftModel,
+  type GrabCraftModelArtifact
+} from './grabcraft-import.js';
+import {
+  importLocalStructureWorldAsModel,
+  resolveLocalStructureReference
+} from './local-structure-import.js';
+import {
+  createGrabCraftPlacementArtifact,
+  writeGrabCraftModelArtifact,
+  writeGrabCraftPlacementArtifact,
+  type GrabCraftPlacementArtifact
+} from './grabcraft-graph.js';
+import { streamRconCommands } from './grabcraft-place.js';
 
 setupStdioFiltering();
 
@@ -59,8 +86,10 @@ const GoalNearXZ = (pathfinderPkg as any).goals?.GoalNearXZ;
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LANDMARK_SPECS_DIR = path.resolve(CURRENT_DIR, '../landmark_specs');
 const META_TEMPLATES_DIR = path.resolve(CURRENT_DIR, '../meta_templates');
+const PROJECT_ROOT_DIR = path.resolve(CURRENT_DIR, '../..');
 
-const BLOCK_QUEUE_DELAY_MS = 15;
+const BLOCK_QUEUE_DELAY_MS = 5;
+const FILL_BATCH_TILE_SPAN = 6;
 const MAX_SETBLOCK_HORIZONTAL_DISTANCE = 4;
 const WALK_TO_RANGE = 1;
 const HOUSE_SITE_SEARCH_RADIUS = 16;
@@ -72,6 +101,9 @@ const GARDEN_WATER_BUFFER_BLOCKS = 1;
 const MAX_STORM_DAMAGE_BLOCKS = 48;
 const MAX_REPAIR_BLOCKS = 300;
 const ZONE_GAP_BLOCKS = 2;
+const ORCHESTRATOR_RESERVATION_CONTROLLER = 'OrchScout_o11';
+const GRABCRAFT_RUNTIME_DIR = '/tmp/sam-minecraft-coordination/grabcraft-runtime';
+const GRABCRAFT_RCON_BATCH_SIZE = 1400;
 
 const OWNER_ALIAS_MAP = new Map<string, string>([
   ['minecraftagent', 'HandyHank_l33'],
@@ -89,12 +121,16 @@ const OWNER_ALIAS_MAP = new Map<string, string>([
   ['forestfinnagent', 'ForestFinn_q32'],
   ['forestfinn', 'ForestFinn_q32'],
   ['forestfinnq32', 'ForestFinn_q32'],
+  ['monumentmarcagent', 'MonumentMarc_m9'],
+  ['monumentmarc', 'MonumentMarc_m9'],
+  ['monumentmarcm9', 'MonumentMarc_m9'],
   ['orchestratoragent', 'OrchScout_o11'],
   ['orchscouto11', 'OrchScout_o11']
 ]);
 
 let landmarkAutonomyService: LandmarkAutonomyService | null = null;
 let templateGeneratorService: TemplateGeneratorService | null = null;
+let grabCraftLookupService: GrabCraftLookupService | null = null;
 
 function getLandmarkAutonomyService(): LandmarkAutonomyService {
   if (!landmarkAutonomyService) {
@@ -115,6 +151,39 @@ function getTemplateGeneratorService(): TemplateGeneratorService {
     );
   }
   return templateGeneratorService;
+}
+
+function getGrabCraftLookupService(): GrabCraftLookupService {
+  if (!grabCraftLookupService) {
+    grabCraftLookupService = new GrabCraftLookupService();
+  }
+  return grabCraftLookupService;
+}
+
+async function autoCompleteGraphTaskForMutation(
+  owner: string,
+  bounds: BoundingBox,
+  note: string,
+  blocksPlaced: number
+): Promise<void> {
+  const completion = await getLandmarkAutonomyService().completeTaskForReservation(
+    owner,
+    bounds,
+    note,
+    blocksPlaced
+  );
+
+  if (!completion) {
+    return;
+  }
+
+  await coordinationStore.reportProgress({
+    taskId: completion.graph.graphId,
+    zoneId: completion.node.zoneId,
+    owner,
+    phase: 'task:done',
+    note
+  });
 }
 
 function toInt(value: unknown): number {
@@ -152,6 +221,15 @@ function truncateText(value: string, maxLength = 96): string {
   return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
+function peerToolNameForWorker(workerId: string): string {
+  const trimmed = workerId.trim();
+  if (!trimmed) {
+    return 'peer-UNKNOWN';
+  }
+  const withoutPeerPrefix = trimmed.replace(/^peer[-_]?/i, '');
+  return `peer-${withoutPeerPrefix}`;
+}
+
 function ownerAliasKey(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -162,9 +240,27 @@ function resolveReservationOwner(rawOwner: string): string {
     return trimmed;
   }
 
-  const withoutPeerPrefix = trimmed.replace(/^peer_/i, '');
+  const withoutPeerPrefix = trimmed.replace(/^peer[-_]?/i, '');
   const alias = OWNER_ALIAS_MAP.get(ownerAliasKey(withoutPeerPrefix));
   return alias ?? withoutPeerPrefix;
+}
+
+function ownersMatch(left: string, right: string): boolean {
+  return ownerAliasKey(resolveReservationOwner(left)) === ownerAliasKey(resolveReservationOwner(right));
+}
+
+function isOrchestratorReservationController(rawOwner: string): boolean {
+  return ownersMatch(rawOwner, ORCHESTRATOR_RESERVATION_CONTROLLER) || ownersMatch(rawOwner, 'OrchestratorAgent');
+}
+
+function requireOrchestratorReservationControl(rawOwner: string, action: string): string {
+  const resolvedOwner = resolveReservationOwner(rawOwner);
+  if (!isOrchestratorReservationController(resolvedOwner)) {
+    throw new Error(
+      `${action} is orchestrator-only. Workers must use preassigned zones from get-my-build-zones.`
+    );
+  }
+  return resolvedOwner;
 }
 
 function isAirBlockName(name: string | null | undefined): boolean {
@@ -250,10 +346,24 @@ async function walkBotNearXZ(bot: any, x: number, zCoord: number, range: number)
   }
 }
 
-async function runServerCommand(bot: any, command: string): Promise<void> {
+interface PlacementExecutionContext {
+  surfaceHeightCache?: Map<string, number>;
+}
+
+function createPlacementExecutionContext(cacheSurfaceHeights = false): PlacementExecutionContext {
+  return cacheSurfaceHeights
+    ? { surfaceHeightCache: new Map<string, number>() }
+    : {};
+}
+
+async function runServerCommand(
+  bot: any,
+  command: string,
+  context?: PlacementExecutionContext
+): Promise<void> {
   const setblockPlacement = parseSetblockPlacement(command);
   if (setblockPlacement) {
-    await ensureGroundedSetblockPlacement(bot, setblockPlacement);
+    await ensureGroundedSetblockPlacement(bot, setblockPlacement, context);
     await ensureBotNearBlock(
       bot,
       setblockPlacement.x,
@@ -266,7 +376,7 @@ async function runServerCommand(bot: any, command: string): Promise<void> {
 
 async function runServerCommandRaw(bot: any, command: string): Promise<void> {
   bot.chat(command);
-  await delay(40);
+  await delay(10);
 }
 
 async function ensureBotNearBlock(bot: any, x: number, y: number, zCoord: number): Promise<void> {
@@ -283,6 +393,25 @@ async function ensureBotNearBlock(bot: any, x: number, y: number, zCoord: number
     zCoord,
     Math.max(1, MAX_SETBLOCK_HORIZONTAL_DISTANCE - 1)
   );
+}
+
+async function runFillBatches(
+  bot: any,
+  bounds: BoundingBox,
+  batches: ReturnType<typeof buildFillBatches>
+): Promise<void> {
+  const centerX = Math.floor((bounds.minX + bounds.maxX) / 2);
+  const centerZ = Math.floor((bounds.minZ + bounds.maxZ) / 2);
+  await walkBotNearXZ(bot, centerX, centerZ, 4);
+
+  for (const batch of batches) {
+    await placementQueue.enqueue(async () => {
+      await runServerCommandRaw(bot, batch.command);
+      if (BLOCK_QUEUE_DELAY_MS > 0) {
+        await delay(BLOCK_QUEUE_DELAY_MS);
+      }
+    });
+  }
 }
 
 function isSolidSupportBlock(block: any): boolean {
@@ -322,12 +451,20 @@ function isOpenAboveBlock(block: any): boolean {
 
 async function ensureGroundedSetblockPlacement(
   bot: any,
-  placement: { x: number; y: number; z: number; blockType: string }
+  placement: { x: number; y: number; z: number; blockType: string },
+  context?: PlacementExecutionContext
 ): Promise<void> {
   const target = bot.blockAt(new Vec3(placement.x, placement.y, placement.z));
   const below = bot.blockAt(new Vec3(placement.x, placement.y - 1, placement.z));
   const above = bot.blockAt(new Vec3(placement.x, placement.y + 1, placement.z));
-  const surfaceY = await getSurfaceHeightAt(bot, placement.x, placement.z);
+  const surfaceY = await getSurfaceHeightAt(
+    bot,
+    placement.x,
+    placement.z,
+    200,
+    0,
+    context?.surfaceHeightCache
+  );
 
   const violation = validateGroundedPlacement({
     blockType: normalizeBlockType(placement.blockType),
@@ -383,6 +520,10 @@ interface LandFootprintSearchResult {
   evaluation: LandFootprintEvaluation;
   offsetDx: number;
   offsetDz: number;
+}
+
+function terrainDelta(evaluation: Pick<LandFootprintEvaluation, 'minGroundY' | 'maxGroundY'>): number {
+  return evaluation.maxGroundY - evaluation.minGroundY;
 }
 
 interface HouseMaterials {
@@ -497,18 +638,35 @@ async function sampleLandColumn(bot: any, x: number, zCoord: number): Promise<La
   return { ok: true, surfaceY, groundY };
 }
 
+function footprintSampleStep(footprint: Footprint2D): number {
+  const area = footprint.width * footprint.depth;
+  if (area >= 2500) {
+    return 6;
+  }
+  if (area >= 900) {
+    return 4;
+  }
+  if (area >= 225) {
+    return 2;
+  }
+  return 1;
+}
+
 async function detectNearbyWater(
   bot: any,
   footprint: Footprint2D,
-  waterBufferBlocks: number
+  waterBufferBlocks: number,
+  surfaceHeightCache?: Map<string, number>
 ): Promise<{ hasWater: boolean; location?: string }> {
   const margin = Math.max(0, Math.floor(waterBufferBlocks));
   if (margin === 0) {
     return { hasWater: false };
   }
 
-  for (let x = footprint.x1 - margin; x <= footprint.x2 + margin; x++) {
-    for (let zCoord = footprint.z1 - margin; zCoord <= footprint.z2 + margin; zCoord++) {
+  const step = Math.max(1, footprintSampleStep(footprint));
+
+  for (let x = footprint.x1 - margin; x <= footprint.x2 + margin; x += step) {
+    for (let zCoord = footprint.z1 - margin; zCoord <= footprint.z2 + margin; zCoord += step) {
       const inFootprint =
         x >= footprint.x1 &&
         x <= footprint.x2 &&
@@ -518,7 +676,7 @@ async function detectNearbyWater(
         continue;
       }
 
-      const surfaceY = await getSurfaceHeightAt(bot, x, zCoord);
+      const surfaceY = await getSurfaceHeightAt(bot, x, zCoord, 200, 0, surfaceHeightCache);
       const ground = bot.blockAt(new Vec3(x, surfaceY - 1, zCoord));
       const above = bot.blockAt(new Vec3(x, surfaceY, zCoord));
 
@@ -592,14 +750,26 @@ async function evaluateLandFootprint(
   maxManMadeColumns: number,
   waterBufferBlocks = 1
 ): Promise<LandFootprintEvaluation> {
+  const surfaceHeightCache = new Map<string, number>();
+  const sampleStep = footprintSampleStep(footprint);
   let minY = Number.POSITIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
   let sumY = 0;
   let countY = 0;
 
-  for (let x = footprint.x1; x <= footprint.x2; x++) {
-    for (let zCoord = footprint.z1; zCoord <= footprint.z2; zCoord++) {
-      const sample = await sampleLandColumn(bot, x, zCoord);
+  for (let x = footprint.x1; x <= footprint.x2; x += sampleStep) {
+    for (let zCoord = footprint.z1; zCoord <= footprint.z2; zCoord += sampleStep) {
+      const surfaceY = await getSurfaceHeightAt(bot, x, zCoord, 200, 0, surfaceHeightCache);
+      const groundY = surfaceY - 1;
+      const ground = bot.blockAt(new Vec3(x, groundY, zCoord));
+      const above = bot.blockAt(new Vec3(x, surfaceY, zCoord));
+      const sample = !ground
+        ? { ok: false as const, surfaceY, groundY, reason: 'ground block unavailable' }
+        : !isLandSurfaceBlock(ground)
+          ? { ok: false as const, surfaceY, groundY, reason: `surface '${ground.name}' is not buildable land` }
+          : above?.liquid
+            ? { ok: false as const, surfaceY, groundY, reason: `column contains liquid '${above.name}'` }
+            : { ok: true as const, surfaceY, groundY };
       if (!sample.ok) {
         return {
           ok: false,
@@ -645,8 +815,8 @@ async function evaluateLandFootprint(
   }
 
   let manMadeColumns = 0;
-  for (let x = footprint.x1; x <= footprint.x2; x++) {
-    for (let zCoord = footprint.z1; zCoord <= footprint.z2; zCoord++) {
+  for (let x = footprint.x1; x <= footprint.x2; x += sampleStep) {
+    for (let zCoord = footprint.z1; zCoord <= footprint.z2; zCoord += sampleStep) {
       for (let y = baseY; y <= baseY + 4; y++) {
         const name = bot.blockAt(new Vec3(x, y, zCoord))?.name ?? null;
         if (classifyBlockNature(name) === 'manmade') {
@@ -669,7 +839,7 @@ async function evaluateLandFootprint(
     };
   }
 
-  const nearbyWater = await detectNearbyWater(bot, footprint, waterBufferBlocks);
+  const nearbyWater = await detectNearbyWater(bot, footprint, waterBufferBlocks, surfaceHeightCache);
   if (nearbyWater.hasWater) {
     return {
       ok: false,
@@ -742,6 +912,724 @@ async function findNearestLandFootprint(
   };
 }
 
+async function findNearestLandmarkOrigin(
+  bot: any,
+  requestedOriginX: number,
+  requestedOriginZ: number,
+  envelope: {
+    minOffsetX: number;
+    maxOffsetX: number;
+    minOffsetZ: number;
+    maxOffsetZ: number;
+  },
+  searchRadius: number,
+  searchStep: number,
+  maxHeightDelta: number,
+  maxManMadeColumns: number,
+  waterBufferBlocks: number
+): Promise<{
+  ok: boolean;
+  result?: {
+    originX: number;
+    originZ: number;
+    footprint: Footprint2D;
+    evaluation: LandFootprintEvaluation;
+    offsetDx: number;
+    offsetDz: number;
+  };
+  reason: string;
+}> {
+  let lastReason = 'no candidates evaluated';
+  let bestResult: {
+    originX: number;
+    originZ: number;
+    footprint: Footprint2D;
+    evaluation: LandFootprintEvaluation;
+    offsetDx: number;
+    offsetDz: number;
+  } | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const offset of candidateOffsets(searchRadius, searchStep)) {
+    const originX = requestedOriginX + offset.dx;
+    const originZ = requestedOriginZ + offset.dz;
+    const footprint = footprintFromBounds(
+      originX + envelope.minOffsetX,
+      originZ + envelope.minOffsetZ,
+      originX + envelope.maxOffsetX,
+      originZ + envelope.maxOffsetZ
+    );
+    const evaluation = await evaluateLandFootprint(
+      bot,
+      footprint,
+      maxHeightDelta,
+      maxManMadeColumns,
+      waterBufferBlocks
+    );
+
+    if (evaluation.ok) {
+      const score =
+        evaluation.manMadeColumns * 10000 +
+        terrainDelta(evaluation) * 100 +
+        Math.abs(offset.dx) +
+        Math.abs(offset.dz);
+      if (score < bestScore) {
+        bestScore = score;
+        bestResult = {
+          originX,
+          originZ,
+          footprint,
+          evaluation,
+          offsetDx: offset.dx,
+          offsetDz: offset.dz
+        };
+      }
+      if (score === 0) {
+        break;
+      }
+    }
+
+    lastReason = evaluation.reason ?? 'site rejected';
+  }
+
+  if (bestResult) {
+    return {
+      ok: true,
+      result: bestResult,
+      reason: 'ok'
+    };
+  }
+
+  return {
+    ok: false,
+    reason: lastReason
+  };
+}
+
+interface CompileLandmarkGraphWithPlacementInput {
+  specId: string;
+  originX: number;
+  originZ: number;
+  scale?: string;
+  stylePreset?: string;
+  prompt?: string;
+  targetDurationMinutes?: number;
+  baseY?: number;
+  autoPlace?: boolean;
+  searchRadius?: number;
+  searchStep?: number;
+  maxHeightDelta?: number;
+  maxManMadeColumns?: number;
+  waterBufferBlocks?: number;
+}
+
+async function compileLandmarkGraphWithPlacement(
+  bot: any,
+  autonomy: LandmarkAutonomyService,
+  input: CompileLandmarkGraphWithPlacementInput
+): Promise<{ graph: BuildGraph; placementSummary: string }> {
+  const requestedOriginX = toInt(input.originX);
+  const requestedOriginZ = toInt(input.originZ);
+  const prompt = input.prompt;
+  const autoPlace = input.autoPlace == null ? true : Boolean(input.autoPlace);
+
+  let originX = requestedOriginX;
+  let originZ = requestedOriginZ;
+  let baseY = input.baseY == null ? await getSurfaceHeightAt(bot, originX, originZ) : toInt(input.baseY);
+  let placementSummary = `requestedOrigin=(${requestedOriginX},${requestedOriginZ}) actualOrigin=(${originX},${baseY},${originZ}) autoPlace=no`;
+
+  if (autoPlace) {
+    const searchRadius = Math.max(0, Math.min(160, toInt(input.searchRadius ?? 96)));
+    const searchStep = Math.max(1, Math.min(8, toInt(input.searchStep ?? 4)));
+    const maxHeightDelta = Math.max(0, Math.min(4, toInt(input.maxHeightDelta ?? 3)));
+    const maxManMadeColumns = Math.max(0, Math.min(20, toInt(input.maxManMadeColumns ?? 0)));
+    const waterBufferBlocks = Math.max(0, Math.min(4, toInt(input.waterBufferBlocks ?? 1)));
+    const envelope = await autonomy.estimateLandmarkEnvelope({
+      specId: input.specId,
+      scale: input.scale,
+      stylePreset: input.stylePreset,
+      prompt
+    });
+
+    const site = await findNearestLandmarkOrigin(
+      bot,
+      requestedOriginX,
+      requestedOriginZ,
+      envelope,
+      searchRadius,
+      searchStep,
+      maxHeightDelta,
+      maxManMadeColumns,
+      waterBufferBlocks
+    );
+
+    if (!site.ok || !site.result) {
+      throw new Error(
+        `Could not auto-place landmark '${input.specId}' near (${requestedOriginX},${requestedOriginZ}). ` +
+        `Structural footprint=${envelope.width}x${envelope.depth}. Last reason: ${site.reason}`
+      );
+    }
+
+    originX = site.result.originX;
+    originZ = site.result.originZ;
+    if (input.baseY == null) {
+      baseY = site.result.evaluation.baseY;
+    }
+    placementSummary =
+      `requestedOrigin=(${requestedOriginX},${requestedOriginZ}) actualOrigin=(${originX},${baseY},${originZ}) ` +
+      `autoPlace=yes offset=(${site.result.offsetDx},${site.result.offsetDz}) footprint=${formatFootprint(site.result.footprint)} ` +
+      `terrainDelta=${terrainDelta(site.result.evaluation)} skippedOptional=${envelope.skippedComponentIds.join(',') || 'none'}`;
+  }
+
+  const graph = await autonomy.compileLandmarkBuildGraph({
+    specId: input.specId,
+    originX,
+    originZ,
+    baseY,
+    scale: input.scale,
+    stylePreset: input.stylePreset,
+    prompt,
+    targetDurationMinutes: input.targetDurationMinutes != null
+      ? toInt(input.targetDurationMinutes)
+      : undefined
+  });
+
+  return {
+    graph,
+    placementSummary
+  };
+}
+
+function taskWaveIndex(taskId: string, taskMap: Map<string, BuildGraphNode>, cache: Map<string, number>): number {
+  const existing = cache.get(taskId);
+  if (existing != null) {
+    return existing;
+  }
+
+  const node = taskMap.get(taskId);
+  if (!node || node.dependencies.length === 0) {
+    cache.set(taskId, 0);
+    return 0;
+  }
+
+  const wave = Math.max(...node.dependencies.map((dependency) => taskWaveIndex(dependency, taskMap, cache))) + 1;
+  cache.set(taskId, wave);
+  return wave;
+}
+
+function buildLandmarkTaskWaves(graph: BuildGraph): BuildGraphNode[][] {
+  const taskMap = new Map(graph.nodes.map((node) => [node.taskId, node]));
+  const cache = new Map<string, number>();
+  const waves = new Map<number, BuildGraphNode[]>();
+
+  for (const node of graph.nodes) {
+    const wave = taskWaveIndex(node.taskId, taskMap, cache);
+    const bucket = waves.get(wave) ?? [];
+    bucket.push(node);
+    waves.set(wave, bucket);
+  }
+
+  return [...waves.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, nodes]) =>
+      [...nodes].sort((left, right) => {
+        if (left.assignedOwner !== right.assignedOwner) {
+          return left.assignedOwner.localeCompare(right.assignedOwner);
+        }
+        return left.taskId.localeCompare(right.taskId);
+      })
+    );
+}
+
+function formatWorkerTaskPacket(task: BuildGraphNode): string {
+  const paramsJson = JSON.stringify(task.toolPlan.params);
+  const delegateTool = peerToolNameForWorker(task.assignedWorker);
+  return (
+    `worker=${task.assignedWorker} delegate_tool=${delegateTool} owner=${task.assignedOwner} ${formatDispatchTask(task)} ` +
+    `execute_tool=${task.toolPlan.primaryTool} execute_params=${paramsJson} note=${truncateText(task.toolPlan.note, 140)}`
+  );
+}
+
+function recommendScaleForGrabCraftCandidate(candidate: GrabCraftLookupCandidate, sizeHint?: string): string {
+  if (sizeHint && sizeHint.trim()) {
+    return sizeHint.trim().toLowerCase();
+  }
+
+  const blockCount = candidate.blockCount ?? 0;
+  if (blockCount >= 35000) {
+    return 'small';
+  }
+  if (blockCount >= 12000) {
+    return 'medium';
+  }
+  return 'medium';
+}
+
+function formatGrabCraftLookupCandidate(candidate: GrabCraftLookupCandidate): string {
+  return (
+    `${candidate.title} score=${candidate.score} query="${candidate.query}" ` +
+    `blocks=${candidate.blockCount ?? 'unknown'} mappedSpec=${candidate.mappedSpecId ?? 'none'} ` +
+    `matchedTokens=${candidate.matchedTokens.join(',') || 'none'} url=${candidate.url}`
+  );
+}
+
+function slugifyIdentifier(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+}
+
+async function compileGrabCraftGraphWithPlacement(
+  bot: any,
+  autonomy: LandmarkAutonomyService,
+  input: {
+    prompt: string;
+    candidate: GrabCraftLookupCandidate;
+    cultureHint?: string;
+    sizeHint?: string;
+    targetDurationMinutes?: number;
+    originX: number;
+    originZ: number;
+    baseY?: number;
+    autoPlace?: boolean;
+    searchRadius?: number;
+    searchStep?: number;
+    maxHeightDelta?: number;
+    maxManMadeColumns?: number;
+    waterBufferBlocks?: number;
+  }
+): Promise<{
+  graph: BuildGraph;
+  placementSummary: string;
+  modelArtifactPath: string;
+  placementArtifactPath: string;
+  model: GrabCraftModelArtifact;
+}> {
+  const model = await importGrabCraftModel(input.candidate.url);
+  const modelBounds = model.stats.bounds;
+  if (!modelBounds) {
+    throw new Error(`GrabCraft model '${input.candidate.url}' has no bounds.`);
+  }
+
+  const width = modelBounds.maxX - modelBounds.minX + 1;
+  const depth = modelBounds.maxZ - modelBounds.minZ + 1;
+  const autoPlace = input.autoPlace == null ? true : Boolean(input.autoPlace);
+  const requestedCenterX = toInt(input.originX);
+  const requestedCenterZ = toInt(input.originZ);
+
+  let centerX = requestedCenterX;
+  let centerZ = requestedCenterZ;
+  let minX = requestedCenterX - Math.floor(width / 2);
+  let minZ = requestedCenterZ - Math.floor(depth / 2);
+  let baseY = input.baseY == null
+    ? await getSurfaceHeightAt(bot, requestedCenterX, requestedCenterZ)
+    : toInt(input.baseY);
+  let placementSummary =
+    `source=grabcraft url=${input.candidate.url} title="${model.source.title}" ` +
+    `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualOrigin=(${minX},${baseY},${minZ}) autoPlace=no`;
+
+  if (autoPlace) {
+    const dynamicSearchStep = Math.max(4, Math.min(12, Math.ceil(Math.max(width, depth) / 8)));
+    const searchRadius = Math.max(0, Math.min(128, toInt(input.searchRadius ?? 80)));
+    const searchStep = Math.max(1, Math.min(12, toInt(input.searchStep ?? dynamicSearchStep)));
+    const maxHeightDelta = Math.max(0, Math.min(6, toInt(input.maxHeightDelta ?? 4)));
+    const maxManMadeColumns = Math.max(0, Math.min(12, toInt(input.maxManMadeColumns ?? 0)));
+    const waterBufferBlocks = Math.max(0, Math.min(4, toInt(input.waterBufferBlocks ?? 1)));
+    const existingClaims = await coordinationStore.listClaims();
+    const activeGraphBounds = await autonomy.listActiveGraphBounds();
+    const blockedBounds: BoundingBox[] = [
+      ...existingClaims.map((claim) => normalizeBounds(claim.minX, claim.minY, claim.minZ, claim.maxX, claim.maxY, claim.maxZ)),
+      ...activeGraphBounds
+    ];
+    const site = blockedBounds.length > 0
+      ? await findNearestLandFootprintAvoiding(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks,
+          blockedBounds
+        )
+      : await findNearestLandFootprint(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks
+        );
+
+    if (!site.ok || !site.result) {
+      throw new Error(
+        `Could not auto-place GrabCraft model '${model.source.title}' near (${requestedCenterX},${requestedCenterZ}). ` +
+        `Footprint=${width}x${depth}. Last reason: ${site.reason}`
+      );
+    }
+
+    centerX = site.result.footprint.centerX;
+    centerZ = site.result.footprint.centerZ;
+    minX = site.result.footprint.x1;
+    minZ = site.result.footprint.z1;
+    if (input.baseY == null) {
+      baseY = site.result.evaluation.baseY;
+    }
+    placementSummary =
+      `source=grabcraft url=${input.candidate.url} title="${model.source.title}" ` +
+      `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualCenter=(${centerX},${baseY},${centerZ}) ` +
+      `actualOrigin=(${minX},${baseY},${minZ}) autoPlace=yes footprint=${formatFootprint(site.result.footprint)} ` +
+      `terrainDelta=${terrainDelta(site.result.evaluation)}`;
+  }
+
+  const graphId = `landmark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const placementArtifact = createGrabCraftPlacementArtifact({
+    graphId,
+    model,
+    originX: minX,
+    originY: baseY,
+    originZ: minZ
+  });
+  const runtimeDir = path.join(GRABCRAFT_RUNTIME_DIR, graphId);
+  const modelArtifactPath = await writeGrabCraftModelArtifact(runtimeDir, graphId, model);
+  const placementArtifactPath = await writeGrabCraftPlacementArtifact(runtimeDir, placementArtifact);
+  const now = Date.now();
+
+  const nodes: BuildGraphNode[] = placementArtifact.shards.map((shard) => ({
+    taskId: shard.shardId,
+    zoneId: `${graphId.slice(0, 10)}_${shard.shardId}`,
+    componentId: shard.shardId,
+    label: shard.label,
+    role: shard.role,
+    dependencies: [...shard.dependencies],
+    assignedWorker: shard.assignedWorker,
+    assignedOwner: resolveReservationOwner(shard.assignedWorker),
+    stylePreset: 'grabcraft_exact',
+    bounds: shard.bounds,
+    centerX: Math.floor((shard.bounds.minX + shard.bounds.maxX) / 2),
+    centerZ: Math.floor((shard.bounds.minZ + shard.bounds.maxZ) / 2),
+    expectedBlocks: shard.blockCount,
+    blocksPlaced: 0,
+    status: shard.dependencies.length === 0 ? 'ready' : 'blocked',
+    attempts: 0,
+    updatedAt: now,
+    toolPlan: {
+      primaryTool: 'place-grabcraft-shard',
+      params: {
+        placementFile: placementArtifactPath,
+        shardId: shard.shardId
+      },
+      note:
+        `Place exact GrabCraft shard for ${model.source.title}. source=${input.candidate.url} ` +
+        `blocks=${shard.blockCount}`
+    }
+  }));
+
+  const graph: BuildGraph = {
+    graphId,
+    specId: input.candidate.mappedSpecId ?? `grabcraft_${slugifyIdentifier(model.source.title)}`,
+    specName: model.source.title,
+    culture: input.cultureHint ? String(input.cultureHint) : (input.candidate.mappedSpecId?.split('_').at(-1) ?? 'grabcraft'),
+    prompt: input.prompt,
+    originX: centerX,
+    originZ: centerZ,
+    baseY,
+    scale: input.sizeHint?.trim().toLowerCase() || 'grabcraft',
+    stylePreset: 'grabcraft_exact',
+    graphStatus: 'planning',
+    targetDurationMinutes: Math.max(10, Math.min(60, toInt(input.targetDurationMinutes ?? 30))),
+    completionTarget: 1,
+    createdAt: now,
+    updatedAt: now,
+    expectedBlocks: nodes.reduce((sum, node) => sum + node.expectedBlocks, 0),
+    placedBlocks: 0,
+    nodes,
+    edges: nodes.flatMap((node) => node.dependencies.map((dependency) => ({ from: dependency, to: node.taskId })))
+  };
+
+  await autonomy.registerBuildGraph(graph);
+
+  if (placementArtifact.skippedPalette.length > 0) {
+    placementSummary += ` skippedPalette=${placementArtifact.skippedPalette.length}`;
+  }
+  placementSummary += ` modelArtifact=${modelArtifactPath} placementArtifact=${placementArtifactPath}`;
+
+  return {
+    graph,
+    placementSummary,
+    modelArtifactPath,
+    placementArtifactPath,
+    model
+  };
+}
+
+async function compileLocalStructureGraphWithPlacement(
+  bot: any,
+  autonomy: LandmarkAutonomyService,
+  input: {
+    prompt: string;
+    filePath: string;
+    title?: string;
+    sourceVersion?: string;
+    sourceRef?: string;
+    targetDurationMinutes?: number;
+    originX: number;
+    originZ: number;
+    baseY?: number;
+    autoPlace?: boolean;
+    searchRadius?: number;
+    searchStep?: number;
+    maxHeightDelta?: number;
+    maxManMadeColumns?: number;
+    waterBufferBlocks?: number;
+  }
+): Promise<{
+  graph: BuildGraph;
+  placementSummary: string;
+  modelArtifactPath: string;
+  placementArtifactPath: string;
+  model: GrabCraftModelArtifact;
+}> {
+  const model = await importLocalStructureWorldAsModel({
+    filePath: input.filePath,
+    title: input.title,
+    sourceVersion: input.sourceVersion
+  });
+  const modelBounds = model.stats.bounds;
+  if (!modelBounds) {
+    throw new Error(`Imported local structure '${input.filePath}' has no bounds.`);
+  }
+
+  const width = modelBounds.maxX - modelBounds.minX + 1;
+  const depth = modelBounds.maxZ - modelBounds.minZ + 1;
+  const autoPlace = input.autoPlace == null ? true : Boolean(input.autoPlace);
+  const requestedCenterX = toInt(input.originX);
+  const requestedCenterZ = toInt(input.originZ);
+  const resolvedFilePath = path.resolve(input.filePath);
+  const sourceRef = input.sourceRef?.trim() || resolvedFilePath;
+
+  let centerX = requestedCenterX;
+  let centerZ = requestedCenterZ;
+  let minX = requestedCenterX - Math.floor(width / 2);
+  let minZ = requestedCenterZ - Math.floor(depth / 2);
+  let baseY = input.baseY == null
+    ? await getSurfaceHeightAt(bot, requestedCenterX, requestedCenterZ)
+    : toInt(input.baseY);
+  let placementSummary =
+    `source=local-archive ref="${sourceRef}" title="${model.source.title}" ` +
+    `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualOrigin=(${minX},${baseY},${minZ}) autoPlace=no`;
+
+  if (autoPlace) {
+    const dynamicSearchStep = Math.max(4, Math.min(12, Math.ceil(Math.max(width, depth) / 8)));
+    const searchRadius = Math.max(0, Math.min(128, toInt(input.searchRadius ?? 80)));
+    const searchStep = Math.max(1, Math.min(12, toInt(input.searchStep ?? dynamicSearchStep)));
+    const maxHeightDelta = Math.max(0, Math.min(6, toInt(input.maxHeightDelta ?? 4)));
+    const maxManMadeColumns = Math.max(0, Math.min(12, toInt(input.maxManMadeColumns ?? 0)));
+    const waterBufferBlocks = Math.max(0, Math.min(4, toInt(input.waterBufferBlocks ?? 1)));
+    const existingClaims = await coordinationStore.listClaims();
+    const activeGraphBounds = await autonomy.listActiveGraphBounds();
+    const blockedBounds: BoundingBox[] = [
+      ...existingClaims.map((claim) => normalizeBounds(claim.minX, claim.minY, claim.minZ, claim.maxX, claim.maxY, claim.maxZ)),
+      ...activeGraphBounds
+    ];
+    const site = blockedBounds.length > 0
+      ? await findNearestLandFootprintAvoiding(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks,
+          blockedBounds
+        )
+      : await findNearestLandFootprint(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks
+        );
+
+    if (!site.ok || !site.result) {
+      throw new Error(
+        `Could not auto-place imported structure '${model.source.title}' near (${requestedCenterX},${requestedCenterZ}). ` +
+        `Footprint=${width}x${depth}. Last reason: ${site.reason}`
+      );
+    }
+
+    centerX = site.result.footprint.centerX;
+    centerZ = site.result.footprint.centerZ;
+    minX = site.result.footprint.x1;
+    minZ = site.result.footprint.z1;
+    if (input.baseY == null) {
+      baseY = site.result.evaluation.baseY;
+    }
+    placementSummary =
+      `source=local-archive file=${resolvedFilePath} title="${model.source.title}" ` +
+      `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualCenter=(${centerX},${baseY},${centerZ}) ` +
+      `actualOrigin=(${minX},${baseY},${minZ}) autoPlace=yes footprint=${formatFootprint(site.result.footprint)} ` +
+      `terrainDelta=${terrainDelta(site.result.evaluation)}`;
+  }
+
+  const graphId = `landmark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const placementArtifact = createGrabCraftPlacementArtifact({
+    graphId,
+    model,
+    originX: minX,
+    originY: baseY,
+    originZ: minZ
+  });
+  const runtimeDir = path.join(GRABCRAFT_RUNTIME_DIR, graphId);
+  const modelArtifactPath = await writeGrabCraftModelArtifact(runtimeDir, graphId, model);
+  const placementArtifactPath = await writeGrabCraftPlacementArtifact(runtimeDir, placementArtifact);
+  const now = Date.now();
+
+  const nodes: BuildGraphNode[] = placementArtifact.shards.map((shard) => ({
+    taskId: shard.shardId,
+    zoneId: `${graphId.slice(0, 10)}_${shard.shardId}`,
+    componentId: shard.shardId,
+    label: shard.label,
+    role: shard.role,
+    dependencies: [...shard.dependencies],
+    assignedWorker: shard.assignedWorker,
+    assignedOwner: resolveReservationOwner(shard.assignedWorker),
+    stylePreset: 'local_archive_exact',
+    bounds: shard.bounds,
+    centerX: Math.floor((shard.bounds.minX + shard.bounds.maxX) / 2),
+    centerZ: Math.floor((shard.bounds.minZ + shard.bounds.maxZ) / 2),
+    expectedBlocks: shard.blockCount,
+    blocksPlaced: 0,
+    status: shard.dependencies.length === 0 ? 'ready' : 'blocked',
+    attempts: 0,
+    updatedAt: now,
+    toolPlan: {
+      primaryTool: 'place-grabcraft-shard',
+      params: {
+        placementFile: placementArtifactPath,
+        shardId: shard.shardId
+      },
+      note:
+        `Place exact imported structure shard for ${model.source.title}. source=${resolvedFilePath} ` +
+        `blocks=${shard.blockCount}`
+    }
+  }));
+
+  const graph: BuildGraph = {
+    graphId,
+    specId: `local_${slugifyIdentifier(model.source.title)}`,
+    specName: model.source.title,
+    culture: 'custom',
+    prompt: input.prompt,
+    originX: centerX,
+    originZ: centerZ,
+    baseY,
+    scale: 'imported',
+    stylePreset: 'local_archive_exact',
+    graphStatus: 'planning',
+    targetDurationMinutes: Math.max(10, Math.min(60, toInt(input.targetDurationMinutes ?? 30))),
+    completionTarget: 1,
+    createdAt: now,
+    updatedAt: now,
+    expectedBlocks: nodes.reduce((sum, node) => sum + node.expectedBlocks, 0),
+    placedBlocks: 0,
+    nodes,
+    edges: nodes.flatMap((node) => node.dependencies.map((dependency) => ({ from: dependency, to: node.taskId })))
+  };
+
+  await autonomy.registerBuildGraph(graph);
+
+  if (placementArtifact.skippedPalette.length > 0) {
+    placementSummary += ` skippedPalette=${placementArtifact.skippedPalette.length}`;
+  }
+  placementSummary += ` modelArtifact=${modelArtifactPath} placementArtifact=${placementArtifactPath}`;
+
+  return {
+    graph,
+    placementSummary,
+    modelArtifactPath,
+    placementArtifactPath,
+    model
+  };
+}
+
+function chunkCommands(commands: string[], batchSize: number): string[][] {
+  const safeBatchSize = Math.max(1, Math.floor(batchSize));
+  const batches: string[][] = [];
+  for (let index = 0; index < commands.length; index += safeBatchSize) {
+    batches.push(commands.slice(index, index + safeBatchSize));
+  }
+  return batches;
+}
+
+async function resolveLandmarkCandidatesWithGrabCraft(
+  autonomy: LandmarkAutonomyService,
+  prompt: string,
+  cultureHint: string | undefined,
+  sizeHint: string | undefined,
+  candidateLimit: number
+): Promise<{
+  candidates: SelectLandmarkResult[];
+  lookup?: GrabCraftLookupResult;
+  mappedLookup?: GrabCraftLookupCandidate;
+}> {
+  const localCandidates = await autonomy.discoverLandmarkCandidates(prompt, cultureHint, sizeHint, candidateLimit);
+  const specs = await autonomy.listLandmarkSpecs();
+  const lookup = await getGrabCraftLookupService().lookupLandmarks({
+    prompt,
+    cultureHint,
+    specs,
+    limit: candidateLimit
+  });
+
+  const merged: SelectLandmarkResult[] = [];
+  const mappedLookup = lookup.selected?.mappedSpecId ? lookup.selected : undefined;
+  if (mappedLookup?.mappedSpecId) {
+    const mappedSpec = specs.find((spec) => spec.id === mappedLookup.mappedSpecId);
+    if (mappedSpec) {
+      merged.push({
+        spec: mappedSpec,
+        score: Math.max(localCandidates[0]?.score ?? 0, mappedLookup.score + 5),
+        recommendedScale: recommendScaleForGrabCraftCandidate(mappedLookup, sizeHint),
+        matchedKeywords: mappedLookup.matchedTokens,
+        rationale:
+          `GrabCraft lookup matched "${mappedLookup.title}" via query "${mappedLookup.query}" ` +
+          `(${mappedLookup.url})`
+      });
+    }
+  }
+
+  for (const candidate of localCandidates) {
+    if (merged.some((entry) => entry.spec.id === candidate.spec.id)) {
+      continue;
+    }
+    merged.push(candidate);
+  }
+
+  return {
+    candidates: merged.slice(0, Math.max(1, candidateLimit)),
+    lookup,
+    mappedLookup
+  };
+}
+
 async function findNearestLandFootprintAvoiding(
   bot: any,
   requestedCenterX: number,
@@ -755,7 +1643,7 @@ async function findNearestLandFootprintAvoiding(
   waterBufferBlocks: number,
   blockedBounds: BoundingBox[],
   zoneHeight = 8
-): Promise<{ ok: boolean; result?: { footprint: Footprint2D; baseY: number; claimBounds: BoundingBox; offsetDx: number; offsetDz: number }; reason: string }> {
+): Promise<{ ok: boolean; result?: { footprint: Footprint2D; baseY: number; claimBounds: BoundingBox; offsetDx: number; offsetDz: number; evaluation: LandFootprintEvaluation }; reason: string }> {
   let lastReason = 'no candidates evaluated';
 
   for (const offset of candidateOffsets(searchRadius, searchStep)) {
@@ -802,7 +1690,8 @@ async function findNearestLandFootprintAvoiding(
         baseY: evaluation.baseY,
         claimBounds,
         offsetDx: offset.dx,
-        offsetDz: offset.dz
+        offsetDz: offset.dz,
+        evaluation
       },
       reason: 'ok'
     };
@@ -834,7 +1723,20 @@ async function evaluateHouseSite(
   }
   return { ok: true, baseY: evaluation.baseY };
 }
-async function getSurfaceHeightAt(bot: any, x: number, zCoord: number, maxY = 200, minY = 0): Promise<number> {
+async function getSurfaceHeightAt(
+  bot: any,
+  x: number,
+  zCoord: number,
+  maxY = 200,
+  minY = 0,
+  surfaceHeightCache?: Map<string, number>
+): Promise<number> {
+  const cacheKey = `${x}:${zCoord}`;
+  const cached = surfaceHeightCache?.get(cacheKey);
+  if (cached != null) {
+    return cached;
+  }
+
   for (let y = maxY; y >= minY; y--) {
     const block = bot.blockAt(new Vec3(x, y, zCoord));
     if (
@@ -842,9 +1744,12 @@ async function getSurfaceHeightAt(bot: any, x: number, zCoord: number, maxY = 20
       !isAirBlockName(block.name) &&
       block.boundingBox === 'block'
     ) {
-      return y + 1;
+      const surfaceY = y + 1;
+      surfaceHeightCache?.set(cacheKey, surfaceY);
+      return surfaceY;
     }
   }
+  surfaceHeightCache?.set(cacheKey, 64);
   return 64;
 }
 
@@ -1025,7 +1930,13 @@ async function enforceMutatingOperationGuard(
     throw new Error(reservation.message);
   }
 
-  if (plannedOperations >= 80 || plannedAirOperations > 0) {
+  if (
+    shouldEnforceOccupiedAreaGuard({
+      bounds,
+      plannedOperations,
+      plannedAirOperations
+    })
+  ) {
     const density = assessManMadeDensity(
       bounds,
       (x, y, zCoord) => bot.blockAt(new Vec3(x, y, zCoord))?.name ?? null
@@ -1148,13 +2059,13 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 5. validate-build-site
   factory.registerTool(
     "validate-build-site",
-    "Validate whether a rectangular footprint is buildable land (flat, dry, low man-made occupancy).",
+    "Validate whether a rectangular footprint is buildable dry land that is already flat or can be gently flattened.",
     {
       x1: z.coerce.number().describe("Footprint min/max X corner"),
       z1: z.coerce.number().describe("Footprint min/max Z corner"),
       x2: z.coerce.number().describe("Footprint min/max X corner"),
       z2: z.coerce.number().describe("Footprint min/max Z corner"),
-      maxHeightDelta: z.coerce.number().optional().describe("Maximum allowed terrain delta across footprint (default: 1)"),
+      maxHeightDelta: z.coerce.number().optional().describe("Maximum allowed terrain delta across footprint before rejection (default: 2)"),
       maxManMadeColumns: z.coerce.number().optional().describe("Maximum allowed man-made columns in footprint (default: 8)"),
       waterBufferBlocks: z.coerce.number().optional().describe("Reject sites if water is nearby within this many blocks (default: 2)")
     },
@@ -1166,7 +2077,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         toInt(params.x2),
         toInt(params.z2)
       );
-      const maxHeightDelta = Math.max(0, Math.min(6, toInt(params.maxHeightDelta ?? 1)));
+      const maxHeightDelta = Math.max(0, Math.min(6, toInt(params.maxHeightDelta ?? 2)));
       const maxManMadeColumns = Math.max(0, toInt(params.maxManMadeColumns ?? 8));
       const waterBufferBlocks = Math.max(0, Math.min(4, toInt(params.waterBufferBlocks ?? HOUSE_WATER_BUFFER_BLOCKS)));
       const evaluation = await evaluateLandFootprint(
@@ -1186,7 +2097,9 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       }
 
       return factory.createResponse(
-        `VALID build site: ${base}. baseY=${evaluation.baseY}, delta=${evaluation.maxGroundY - evaluation.minGroundY}, ` +
+        `VALID build site: ${base}. baseY=${evaluation.baseY}, delta=${terrainDelta(evaluation)}, ` +
+        `flattenRecommended=${terrainDelta(evaluation) > 0 ? 'yes' : 'no'}, ` +
+        `suggestedFlattenMaxAdjustment=${Math.min(2, terrainDelta(evaluation))}, ` +
         `manMadeColumns=${evaluation.manMadeColumns}, waterBuffer=${waterBufferBlocks}. ` +
         `Suggested claim: x1=${footprint.x1} y1=${evaluation.baseY - 1} z1=${footprint.z1} x2=${footprint.x2} y2=${evaluation.baseY + 7} z2=${footprint.z2}`
       );
@@ -1196,7 +2109,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 6. find-build-site
   factory.registerTool(
     "find-build-site",
-    "Find the nearest valid flat-land footprint around a target center.",
+    "Find the nearest valid dry-land footprint around a target center, including land that can be gently flattened.",
     {
       centerX: z.coerce.number().describe("Requested center X"),
       centerZ: z.coerce.number().describe("Requested center Z"),
@@ -1204,7 +2117,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       depth: z.coerce.number().describe("Footprint depth in blocks"),
       searchRadius: z.coerce.number().optional().describe("Search radius around requested center (default: 16)"),
       searchStep: z.coerce.number().optional().describe("Search step between candidates (default: 2)"),
-      maxHeightDelta: z.coerce.number().optional().describe("Maximum allowed terrain delta across footprint (default: 1)"),
+      maxHeightDelta: z.coerce.number().optional().describe("Maximum allowed terrain delta across footprint before rejection (default: 2)"),
       maxManMadeColumns: z.coerce.number().optional().describe("Maximum allowed man-made columns in footprint (default: 8)"),
       waterBufferBlocks: z.coerce.number().optional().describe("Reject sites if water is nearby within this many blocks (default: 2)")
     },
@@ -1216,7 +2129,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const depth = Math.max(1, Math.min(33, toInt(params.depth)));
       const searchRadius = Math.max(0, Math.min(64, toInt(params.searchRadius ?? 16)));
       const searchStep = Math.max(1, Math.min(8, toInt(params.searchStep ?? 2)));
-      const maxHeightDelta = Math.max(0, Math.min(6, toInt(params.maxHeightDelta ?? 1)));
+      const maxHeightDelta = Math.max(0, Math.min(6, toInt(params.maxHeightDelta ?? 2)));
       const maxManMadeColumns = Math.max(0, toInt(params.maxManMadeColumns ?? 8));
       const waterBufferBlocks = Math.max(0, Math.min(4, toInt(params.waterBufferBlocks ?? HOUSE_WATER_BUFFER_BLOCKS)));
 
@@ -1244,7 +2157,8 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       return factory.createResponse(
         `Found build site: center=(${footprint.centerX},${footprint.centerZ}) ` +
         `offset=(${offsetDx},${offsetDz}), ${formatFootprint(footprint)}, baseY=${evaluation.baseY}, ` +
-        `delta=${evaluation.maxGroundY - evaluation.minGroundY}, manMadeColumns=${evaluation.manMadeColumns}, ` +
+        `delta=${terrainDelta(evaluation)}, flattenRecommended=${terrainDelta(evaluation) > 0 ? 'yes' : 'no'}, ` +
+        `suggestedFlattenMaxAdjustment=${Math.min(2, terrainDelta(evaluation))}, manMadeColumns=${evaluation.manMadeColumns}, ` +
         `waterBuffer=${waterBufferBlocks}. ` +
         `Suggested claim: x1=${footprint.x1} y1=${evaluation.baseY - 1} z1=${footprint.z1} x2=${footprint.x2} y2=${evaluation.baseY + 7} z2=${footprint.z2}`
       );
@@ -1254,9 +2168,10 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 7. claim-build-zone
   factory.registerTool(
     "claim-build-zone",
-    "Claim an exclusive build zone (bbox + TTL). Required before mutating build tools.",
+    "Orchestrator-only: assign an exclusive build zone (bbox + TTL) to a worker before mutating build tools.",
     {
       zoneId: z.string().min(1).describe("Unique zone identifier"),
+      assignedTo: z.string().optional().describe("Worker alias/user to receive this zone assignment"),
       x1: z.coerce.number().describe("Start X"),
       y1: z.coerce.number().describe("Start Y"),
       z1: z.coerce.number().describe("Start Z"),
@@ -1264,9 +2179,11 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       y2: z.coerce.number().describe("End Y"),
       z2: z.coerce.number().describe("End Z"),
       ttlSeconds: z.coerce.number().optional().describe("Reservation TTL in seconds (default: 900)"),
+      spacingBlocks: z.coerce.number().optional().describe("Required footprint spacing to other owners (default: 2, use 0 for touching subzones)"),
     },
     async (params: any) => {
-      const owner = getOwner();
+      const requester = requireOrchestratorReservationControl(getOwner(), 'claim-build-zone');
+      const assignedTo = resolveReservationOwner(String(params.assignedTo ?? requester));
       const bounds = normalizeBounds(
         toInt(params.x1),
         toInt(params.y1),
@@ -1276,31 +2193,53 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         toInt(params.z2)
       );
       const result = await coordinationStore.claimZone(
-        owner,
+        assignedTo,
         String(params.zoneId),
         bounds,
-        params.ttlSeconds ? toInt(params.ttlSeconds) : 900
+        params.ttlSeconds ? toInt(params.ttlSeconds) : 900,
+        params.spacingBlocks == null ? undefined : toInt(params.spacingBlocks)
       );
 
       if (!result.ok) {
         throw new Error(result.message);
       }
 
-      return factory.createResponse(result.message);
+      return factory.createResponse(
+        `Zone '${String(params.zoneId)}' assigned by ${requester} to ${assignedTo}. ${result.message}`
+      );
     }
   );
 
   // 8. release-build-zone
   factory.registerTool(
     "release-build-zone",
-    "Release one of your claimed build zones.",
+    "Orchestrator-only: release a previously assigned build zone.",
     {
       zoneId: z.string().min(1).describe("Zone identifier to release"),
+      assignedTo: z.string().optional().describe("Optional worker alias/user that currently owns the assignment"),
     },
     async (params: any) => {
-      const owner = getOwner();
-      const result = await coordinationStore.releaseZone(owner, String(params.zoneId));
-      return factory.createResponse(result.message);
+      const requester = requireOrchestratorReservationControl(getOwner(), 'release-build-zone');
+      const zoneId = String(params.zoneId).trim();
+      let assignedTo = params.assignedTo ? resolveReservationOwner(String(params.assignedTo)) : '';
+
+      if (!assignedTo) {
+        const matches = (await coordinationStore.listClaims()).filter((claim) => claim.zoneId === zoneId);
+        if (matches.length === 0) {
+          return factory.createResponse(`No assigned zone '${zoneId}' found to release.`);
+        }
+        if (matches.length > 1) {
+          throw new Error(
+            `Multiple assignments share zoneId '${zoneId}'. Re-run with assignedTo to release the correct one.`
+          );
+        }
+        assignedTo = matches[0].owner;
+      }
+
+      const result = await coordinationStore.releaseZone(assignedTo, zoneId);
+      return factory.createResponse(
+        `Zone '${zoneId}' release requested by ${requester} for ${assignedTo}. ${result.message}`
+      );
     }
   );
 
@@ -1337,7 +2276,62 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     }
   );
 
-  // 10. get-progress-board
+  // 10. get-my-build-zones
+  factory.registerTool(
+    "get-my-build-zones",
+    "Show the current worker's active preassigned build zones. Workers should use this instead of claiming zones.",
+    {
+      maxEntries: z.coerce.number().optional().describe("Max assigned zones to include (default: all, max: 100)"),
+      zoneId: z.string().optional().describe("Optional exact zone id to verify/pin in the response"),
+    },
+    async (params: any) => {
+      const owner = resolveReservationOwner(getOwner());
+      const requestedZoneId = params.zoneId ? String(params.zoneId).trim() : '';
+      const claims = (await coordinationStore.listClaims())
+        .filter((claim) => ownersMatch(claim.owner, owner))
+        .sort((a, b) => a.zoneId.localeCompare(b.zoneId));
+
+      if (claims.length === 0) {
+        return factory.createResponse(
+          `No active preassigned build zones for ${owner}. Ask OrchestratorAgent for an assignment.`
+        );
+      }
+
+      const filteredClaims = requestedZoneId
+        ? claims.filter((claim) => claim.zoneId === requestedZoneId)
+        : claims;
+
+      if (requestedZoneId && filteredClaims.length === 0) {
+        return factory.createResponse(
+          `Requested zone '${requestedZoneId}' is not currently assigned to ${owner}. ` +
+          `Active zones for ${owner}: ${claims.map((claim) => claim.zoneId).join(', ')}`
+        );
+      }
+
+      const maxEntries = Math.max(
+        1,
+        Math.min(100, toInt(params.maxEntries ?? filteredClaims.length))
+      );
+
+      const lines = filteredClaims.slice(0, maxEntries).map((claim) => {
+        const ttlSeconds = Math.max(0, Math.floor((claim.expiresAt - Date.now()) / 1000));
+        return `${claim.zoneId} assignedTo=${claim.owner} bounds=${formatBounds(claim)} ttl=${ttlSeconds}s spacing=${claim.spacingBlocks}`;
+      });
+
+      const scope = requestedZoneId
+        ? `Requested zone '${requestedZoneId}' for ${owner}`
+        : `Preassigned build zones for ${owner} (${claims.length} total)`;
+      const truncated = filteredClaims.length > maxEntries
+        ? `\nNote: showing ${maxEntries}/${filteredClaims.length} matching zones.`
+        : '';
+
+      return factory.createResponse(
+        `${scope}:\n${lines.join('\n')}${truncated}`
+      );
+    }
+  );
+
+  // 11. get-progress-board
   factory.registerTool(
     "get-progress-board",
     "Show active zone claims and recent progress updates.",
@@ -1357,7 +2351,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         ? (claims.length > 0
             ? claims.slice(0, 8).map((claim) => {
                 const ttlSeconds = Math.max(0, Math.floor((claim.expiresAt - Date.now()) / 1000));
-                return `- ${claim.zoneId} owner=${claim.owner} ttl=${ttlSeconds}s`;
+                return `- ${claim.zoneId} assignedTo=${claim.owner} ttl=${ttlSeconds}s`;
               }).join('\n')
             : '- none')
         : '- skipped';
@@ -1379,7 +2373,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     }
   );
 
-  // 11. plan-village-layout
+  // 12. plan-village-layout
   factory.registerTool(
     "plan-village-layout",
     "Plan a compact multi-house village grid with explicit non-overlapping footprint slots.",
@@ -1426,7 +2420,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     }
   );
 
-  // 12. allocate-village-zones
+  // 13. allocate-village-zones
   factory.registerTool(
     "allocate-village-zones",
     "Plan and reserve all worker house zones upfront in one atomic pass for conflict-free parallel building.",
@@ -1446,13 +2440,13 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       clearExistingForOwners: z.coerce.boolean().optional().describe("Clear prior claims for target owners before allocation (default: true)"),
       searchRadius: z.coerce.number().optional().describe("Per-slot local search radius (default: 14)"),
       searchStep: z.coerce.number().optional().describe("Search step size (default: 2)"),
-      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta inside each footprint (default: 1)"),
+      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta inside each footprint before rejection (default: 2)"),
       maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns inside each footprint (default: 4)"),
       waterBufferBlocks: z.coerce.number().optional().describe("Reject sites too close to water (default: 2)")
     },
     async (params: any) => {
+      const orchestratorOwner = requireOrchestratorReservationControl(getOwner(), 'allocate-village-zones');
       const bot = getBot();
-      const orchestratorOwner = getOwner();
       const builders = parseCsvList(params.buildersCsv) ?? [
         'MinecraftAgent',
         'BuildBeaAgent',
@@ -1465,7 +2459,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         : Boolean(params.clearExistingForOwners);
       const searchRadius = Math.max(0, Math.min(48, toInt(params.searchRadius ?? 14)));
       const searchStep = Math.max(1, Math.min(8, toInt(params.searchStep ?? 2)));
-      const maxHeightDelta = Math.max(0, Math.min(4, toInt(params.maxHeightDelta ?? 1)));
+      const maxHeightDelta = Math.max(0, Math.min(4, toInt(params.maxHeightDelta ?? 2)));
       const maxManMadeColumns = Math.max(0, Math.min(20, toInt(params.maxManMadeColumns ?? 4)));
       const waterBufferBlocks = Math.max(0, Math.min(4, toInt(params.waterBufferBlocks ?? HOUSE_WATER_BUFFER_BLOCKS)));
       const taskId = params.taskId ? String(params.taskId) : `zone-allocation-${Date.now()}`;
@@ -1504,6 +2498,8 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         z2: number;
         y1: number;
         y2: number;
+        terrainDelta: number;
+        suggestedFlattenMaxAdjustment: number;
       }> = [];
 
       for (const slot of plan.slots) {
@@ -1542,7 +2538,9 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
           x2: site.result.footprint.x2,
           z2: site.result.footprint.z2,
           y1: site.result.baseY - 1,
-          y2: site.result.baseY + 7
+          y2: site.result.baseY + 7,
+          terrainDelta: terrainDelta(site.result.evaluation),
+          suggestedFlattenMaxAdjustment: Math.min(2, terrainDelta(site.result.evaluation))
         });
       }
 
@@ -1573,14 +2571,16 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
           zoneId: allocation.zoneId,
           owner: orchestratorOwner,
           phase: 'allocated',
-          note: `assigned=${allocation.owner} center=(${allocation.centerX},${allocation.centerZ})`
+          note: `assignedTo=${allocation.owner} center=(${allocation.centerX},${allocation.centerZ})`
         });
       }
 
       const lines = allocations.map((allocation) =>
-        `${allocation.zoneId} owner=${allocation.owner} builder=${allocation.builder} style=${allocation.style} ` +
+        `${allocation.zoneId} assignedTo=${allocation.owner} builder=${allocation.builder} style=${allocation.style} ` +
         `center=(${allocation.centerX},${allocation.centerZ}) claim=` +
-        `x1=${allocation.x1} y1=${allocation.y1} z1=${allocation.z1} x2=${allocation.x2} y2=${allocation.y2} z2=${allocation.z2}`
+        `x1=${allocation.x1} y1=${allocation.y1} z1=${allocation.z1} x2=${allocation.x2} y2=${allocation.y2} z2=${allocation.z2} ` +
+        `terrainDelta=${allocation.terrainDelta} flattenRecommended=${allocation.terrainDelta > 0 ? 'yes' : 'no'} ` +
+        `suggestedFlattenMaxAdjustment=${allocation.suggestedFlattenMaxAdjustment}`
       );
 
       return factory.createResponse(
@@ -1591,10 +2591,74 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     }
   );
 
-  // 13. select-landmark-spec
+  // 14. lookup-grabcraft-landmarks
+  factory.registerTool(
+    "lookup-grabcraft-landmarks",
+    "Search grabcraft.com for landmark/building candidates related to a user prompt and map matching results onto supported local templates when possible.",
+    {
+      prompt: z.string().min(1).describe("User mission prompt describing the requested landmark or cultural structure"),
+      cultureHint: z.string().optional().describe("Optional culture hint, e.g. USA or France"),
+      limit: z.coerce.number().optional().describe("Maximum number of ranked results to return (default: 5)")
+    },
+    async (params: any) => {
+      const autonomy = getLandmarkAutonomyService();
+      const specs = await autonomy.listLandmarkSpecs();
+      const prompt = String(params.prompt);
+      const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
+      const limit = Math.max(1, Math.min(8, toInt(params.limit ?? 5)));
+
+      const lookup = await getGrabCraftLookupService().lookupLandmarks({
+        prompt,
+        cultureHint,
+        specs,
+        limit
+      });
+
+      if (lookup.candidates.length === 0) {
+        return factory.createResponse(
+          `GrabCraft lookup found no candidates for prompt="${prompt}" queries=${lookup.queries.join(',') || 'none'}`
+        );
+      }
+
+      return factory.createResponse(
+        `GrabCraft queries=${lookup.queries.join(' | ')}\n` +
+        lookup.candidates.map((candidate, index) => `${index + 1}. ${formatGrabCraftLookupCandidate(candidate)}`).join('\n')
+      );
+    }
+  );
+
+  // 15. discover-landmark-candidates
+  factory.registerTool(
+    "discover-landmark-candidates",
+    "Discover and rank landmark candidates from the active local landmark bank for a broad cultural or landmark prompt.",
+    {
+      prompt: z.string().min(1).describe("User mission prompt describing the landmark/building intent"),
+      cultureHint: z.string().optional().describe("Optional culture hint, e.g. Italy or France"),
+      sizeHint: z.string().optional().describe("Optional size hint, e.g. small/medium/large"),
+      limit: z.coerce.number().optional().describe("Maximum number of ranked candidates to return (default: 5)")
+    },
+    async (params: any) => {
+      const autonomy = getLandmarkAutonomyService();
+      const prompt = String(params.prompt);
+      const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
+      const sizeHint = params.sizeHint ? String(params.sizeHint) : undefined;
+      const limit = Math.max(1, Math.min(8, toInt(params.limit ?? 5)));
+
+      const candidates = await autonomy.discoverLandmarkCandidates(prompt, cultureHint, sizeHint, limit);
+      const lines = candidates.map((candidate, index) => (
+        `${index + 1}. ${candidate.spec.id} (${candidate.spec.name}) culture=${candidate.spec.culture} ` +
+        `score=${candidate.score} recommendedScale=${candidate.recommendedScale} ` +
+        `matchedKeywords=${candidate.matchedKeywords.join(',') || 'none'} rationale=${candidate.rationale}`
+      ));
+
+      return factory.createResponse(lines.join('\n'));
+    }
+  );
+
+  // 16. select-landmark-spec
   factory.registerTool(
     "select-landmark-spec",
-    "Select the best landmark template from the local landmark bank for a user prompt.",
+    "Select the best landmark template for a user prompt. Uses the active local landmark bank and can prefer a GrabCraft-matched local template when site lookup finds a stronger match.",
     {
       prompt: z.string().min(1).describe("User mission prompt describing the landmark/building intent"),
       cultureHint: z.string().optional().describe("Optional culture hint, e.g. France or Netherlands"),
@@ -1606,23 +2670,286 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
       const sizeHint = params.sizeHint ? String(params.sizeHint) : undefined;
 
-      const selected = await autonomy.selectLandmarkSpec(prompt, cultureHint, sizeHint);
+      const resolution = await resolveLandmarkCandidatesWithGrabCraft(
+        autonomy,
+        prompt,
+        cultureHint,
+        sizeHint,
+        3
+      );
+      const selected = resolution.candidates[0];
       const styles = Object.keys(selected.spec.styles).join(',');
       const scales = Object.keys(selected.spec.scaleVariants).join(',');
+      const sourceNote = resolution.mappedLookup
+        ? ` lookupSource=grabcraft.com matchedTitle="${resolution.mappedLookup.title}" matchedUrl=${resolution.mappedLookup.url}.`
+        : '';
 
       return factory.createResponse(
         `Selected landmark spec '${selected.spec.id}' (${selected.spec.name}) ` +
         `culture=${selected.spec.culture} score=${selected.score} recommendedScale=${selected.recommendedScale}. ` +
         `Matched keywords=${selected.matchedKeywords.join(',') || 'none'}. Styles=${styles}. Scales=${scales}. ` +
-        `Rationale: ${selected.rationale}`
+        `Rationale: ${selected.rationale}.${sourceNote}`
       );
     }
   );
 
-  // 14. compile-landmark-build-graph
+  // 17. plan-landmark-mission
+  factory.registerTool(
+    "plan-landmark-mission",
+    "High-level landmark planner: discover candidates, consult GrabCraft when needed, pick the best buildable landmark, auto-place it, compile the graph, and emit dispatch waves for the orchestrator.",
+    {
+      prompt: z.string().min(1).describe("User mission prompt describing the requested landmark or cultural structure"),
+      originX: z.coerce.number().describe("Requested build origin X"),
+      originZ: z.coerce.number().describe("Requested build origin Z"),
+      cultureHint: z.string().optional().describe("Optional culture hint, e.g. Italy or France"),
+      sizeHint: z.string().optional().describe("Optional size hint, e.g. small/medium/large"),
+      stylePreset: z.string().optional().describe("Optional style preset key for the selected spec"),
+      targetDurationMinutes: z.coerce.number().optional().describe("Target autonomy runtime in minutes (default: 30)"),
+      baseY: z.coerce.number().optional().describe("Optional explicit base Y. If omitted, sampled from terrain."),
+      autoPlace: z.coerce.boolean().optional().describe("Auto-pick the nearest usable dry site for the landmark footprint (default: true)"),
+      searchRadius: z.coerce.number().optional().describe("Auto-placement search radius around requested origin (default: 96)"),
+      searchStep: z.coerce.number().optional().describe("Auto-placement search step size (default: 4)"),
+      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta across the structural footprint during auto-placement (default: 3)"),
+      maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns across the structural footprint during auto-placement (default: 0)"),
+      waterBufferBlocks: z.coerce.number().optional().describe("Reject auto-placement sites too close to water (default: 1)"),
+      candidateLimit: z.coerce.number().optional().describe("Number of ranked candidates to try before failing (default: 3)"),
+      allowLocalSpecFallback: z.coerce.boolean().optional().describe("Allow fallback to simplified local landmark specs if live GrabCraft import fails (default: false)")
+    },
+    async (params: any) => {
+      const autonomy = getLandmarkAutonomyService();
+      const bot = getBot();
+      const prompt = String(params.prompt);
+      const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
+      const sizeHint = params.sizeHint ? String(params.sizeHint) : undefined;
+      const candidateLimit = Math.max(1, Math.min(6, toInt(params.candidateLimit ?? 3)));
+      const allowLocalSpecFallback = params.allowLocalSpecFallback == null
+        ? false
+        : Boolean(params.allowLocalSpecFallback);
+
+      const resolution = await resolveLandmarkCandidatesWithGrabCraft(
+        autonomy,
+        prompt,
+        cultureHint,
+        sizeHint,
+        candidateLimit
+      );
+      const candidates = resolution.candidates;
+      const failedCandidates: string[] = [];
+      let compiled: {
+        graph: BuildGraph;
+        placementSummary: string;
+        source: 'grabcraft' | 'local-spec';
+        selectedName: string;
+        selectedSpecId: string;
+        selectedCulture: string;
+        selectedScale: string;
+      } | null = null;
+
+      const lookupCandidates = resolution.lookup?.selected
+        ? [
+            resolution.lookup.selected,
+            ...(resolution.lookup.candidates ?? []).filter((candidate) => candidate.url !== resolution.lookup?.selected?.url)
+          ]
+        : (resolution.lookup?.candidates ?? []);
+
+      for (const candidate of lookupCandidates.slice(0, candidateLimit)) {
+        try {
+          const imported = await compileGrabCraftGraphWithPlacement(bot, autonomy, {
+            prompt,
+            candidate,
+            cultureHint,
+            sizeHint: recommendScaleForGrabCraftCandidate(candidate, sizeHint),
+            targetDurationMinutes: params.targetDurationMinutes != null
+              ? toInt(params.targetDurationMinutes)
+              : undefined,
+            originX: toInt(params.originX),
+            originZ: toInt(params.originZ),
+            baseY: params.baseY == null ? undefined : toInt(params.baseY),
+            autoPlace: params.autoPlace == null ? undefined : Boolean(params.autoPlace),
+            searchRadius: params.searchRadius == null ? undefined : toInt(params.searchRadius),
+            searchStep: params.searchStep == null ? undefined : toInt(params.searchStep),
+            maxHeightDelta: params.maxHeightDelta == null ? undefined : toInt(params.maxHeightDelta),
+            maxManMadeColumns: params.maxManMadeColumns == null ? undefined : toInt(params.maxManMadeColumns),
+            waterBufferBlocks: params.waterBufferBlocks == null ? undefined : toInt(params.waterBufferBlocks)
+          });
+          compiled = {
+            graph: imported.graph,
+            placementSummary: imported.placementSummary,
+            source: 'grabcraft',
+            selectedName: imported.model.source.title,
+            selectedSpecId: imported.graph.specId,
+            selectedCulture: imported.graph.culture,
+            selectedScale: imported.graph.scale
+          };
+          break;
+        } catch (error) {
+          failedCandidates.push(`grabcraft:${candidate.title}: ${formatError(error)}`);
+        }
+      }
+
+      if (!compiled && allowLocalSpecFallback) {
+        for (const candidate of candidates) {
+          try {
+            const localCompiled = await compileLandmarkGraphWithPlacement(bot, autonomy, {
+              specId: candidate.spec.id,
+              originX: toInt(params.originX),
+              originZ: toInt(params.originZ),
+              scale: candidate.recommendedScale,
+              stylePreset: params.stylePreset ? String(params.stylePreset) : undefined,
+              prompt,
+              targetDurationMinutes: params.targetDurationMinutes != null
+                ? toInt(params.targetDurationMinutes)
+                : undefined,
+              baseY: params.baseY == null ? undefined : toInt(params.baseY),
+              autoPlace: params.autoPlace == null ? undefined : Boolean(params.autoPlace),
+              searchRadius: params.searchRadius == null ? undefined : toInt(params.searchRadius),
+              searchStep: params.searchStep == null ? undefined : toInt(params.searchStep),
+              maxHeightDelta: params.maxHeightDelta == null ? undefined : toInt(params.maxHeightDelta),
+              maxManMadeColumns: params.maxManMadeColumns == null ? undefined : toInt(params.maxManMadeColumns),
+              waterBufferBlocks: params.waterBufferBlocks == null ? undefined : toInt(params.waterBufferBlocks)
+            });
+            compiled = {
+              graph: localCompiled.graph,
+              placementSummary: localCompiled.placementSummary,
+              source: 'local-spec',
+              selectedName: candidate.spec.name,
+              selectedSpecId: candidate.spec.id,
+              selectedCulture: candidate.spec.culture,
+              selectedScale: candidate.recommendedScale
+            };
+            break;
+          } catch (error) {
+            failedCandidates.push(`${candidate.spec.id}: ${formatError(error)}`);
+          }
+        }
+      }
+
+      if (!compiled) {
+        const lookupFailureSummary = resolution.lookup?.candidates?.length
+          ? ` GrabCraft top results: ${resolution.lookup.candidates
+              .slice(0, 3)
+              .map((candidate) => formatGrabCraftLookupCandidate(candidate))
+              .join(' | ')}`
+          : '';
+        throw new Error(
+          `Could not plan a landmark mission for '${prompt}' from GrabCraft. ` +
+          `Live GrabCraft import is required for this tool. ` +
+          `Tried candidates: ${failedCandidates.join(' | ') || 'none'}.${lookupFailureSummary}`
+        );
+      }
+
+      const graph = compiled.graph;
+      const readyPackets = graph.nodes
+        .filter((node) => node.status === 'ready')
+        .slice(0, 5)
+        .map((node) => (
+          `${node.assignedWorker}:${node.taskId}:${node.toolPlan.primaryTool}:${node.zoneId}`
+        ));
+      const readyWorkers = Array.from(new Set(
+        graph.nodes
+          .filter((node) => node.status === 'ready')
+          .map((node) => node.assignedWorker)
+      ));
+      const candidateSummary = candidates
+        .slice(0, 3)
+        .map((candidate) => `${candidate.spec.id}:${candidate.score}`)
+        .join(', ');
+      const lookupSummary = resolution.lookup?.candidates?.length
+        ? resolution.lookup.candidates
+            .slice(0, Math.min(2, resolution.lookup.candidates.length))
+            .map((candidate) => formatGrabCraftLookupCandidate(candidate))
+            .join(' | ')
+        : 'none';
+
+      return factory.createResponse(
+        `Mission plan ready. selectedSource=${compiled.source} selectedSpec=${compiled.selectedSpecId} selectedName="${compiled.selectedName}" ` +
+        `culture=${compiled.selectedCulture} selectedScale=${compiled.selectedScale} ` +
+        `graphId=${graph.graphId} tasks=${graph.nodes.length} blockBudget=${graph.expectedBlocks}. ${compiled.placementSummary}\n` +
+        `readyWorkers=${readyWorkers.join(',') || 'none'} ` +
+        `readyPackets=${readyPackets.join(' | ') || 'none'}\n` +
+        `candidateSummary=${candidateSummary || 'none'}\n` +
+        `grabcraftSummary=${lookupSummary}` +
+        (failedCandidates.length > 0 ? `\nskipped=${failedCandidates.slice(0, 2).join(' | ')}` : '')
+      );
+    }
+  );
+
+  // 18. compile-landmark-build-graph
+  factory.registerTool(
+    "plan-local-structure-mission",
+    "Import a local world-save zip or world directory, isolate the dominant structure, auto-place it on valid land, compile exact shard packets, and emit a worker-ready graph for the orchestrator.",
+    {
+      filePath: z.string().min(1).optional().describe("Optional absolute path to a local .zip world save or extracted Minecraft world directory"),
+      structureName: z.string().min(1).optional().describe("Optional registered local structure name or alias, e.g. 'local Leaning Tower of Pisa'"),
+      title: z.string().optional().describe("Optional display title for the imported structure"),
+      sourceVersion: z.string().optional().describe("Minecraft version used to read the source world (default: 1.13.2)"),
+      originX: z.coerce.number().describe("Requested build origin X"),
+      originZ: z.coerce.number().describe("Requested build origin Z"),
+      targetDurationMinutes: z.coerce.number().optional().describe("Target autonomy runtime in minutes (default: 30)"),
+      baseY: z.coerce.number().optional().describe("Optional explicit base Y. If omitted, sampled from terrain."),
+      autoPlace: z.coerce.boolean().optional().describe("Auto-pick the nearest usable dry site for the imported structure footprint (default: true)"),
+      searchRadius: z.coerce.number().optional().describe("Auto-placement search radius around requested origin (default: 80)"),
+      searchStep: z.coerce.number().optional().describe("Auto-placement search step size"),
+      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta across the structural footprint during auto-placement (default: 4)"),
+      maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns across the structural footprint during auto-placement (default: 0)"),
+      waterBufferBlocks: z.coerce.number().optional().describe("Reject auto-placement sites too close to water (default: 1)")
+    },
+    async (params: any) => {
+      const autonomy = getLandmarkAutonomyService();
+      const bot = getBot();
+      const resolved = await resolveLocalStructureReference({
+        filePath: params.filePath ? String(params.filePath) : undefined,
+        structureName: params.structureName ? String(params.structureName) : undefined,
+        title: params.title ? String(params.title) : undefined,
+        sourceVersion: params.sourceVersion ? String(params.sourceVersion) : undefined
+      });
+      const compiled = await compileLocalStructureGraphWithPlacement(bot, autonomy, {
+        prompt: `Build local structure ${resolved.title}`,
+        filePath: resolved.filePath,
+        title: resolved.title,
+        sourceVersion: resolved.sourceVersion,
+        sourceRef: resolved.resolvedVia === 'registry'
+          ? `registry:${resolved.id ?? resolved.title}`
+          : resolved.filePath,
+        targetDurationMinutes: params.targetDurationMinutes != null
+          ? toInt(params.targetDurationMinutes)
+          : undefined,
+        originX: toInt(params.originX),
+        originZ: toInt(params.originZ),
+        baseY: params.baseY == null ? undefined : toInt(params.baseY),
+        autoPlace: params.autoPlace == null ? undefined : Boolean(params.autoPlace),
+        searchRadius: params.searchRadius == null ? undefined : toInt(params.searchRadius),
+        searchStep: params.searchStep == null ? undefined : toInt(params.searchStep),
+        maxHeightDelta: params.maxHeightDelta == null ? undefined : toInt(params.maxHeightDelta),
+        maxManMadeColumns: params.maxManMadeColumns == null ? undefined : toInt(params.maxManMadeColumns),
+        waterBufferBlocks: params.waterBufferBlocks == null ? undefined : toInt(params.waterBufferBlocks)
+      });
+      const graph = compiled.graph;
+      const readyPackets = graph.nodes
+        .filter((node) => node.status === 'ready')
+        .slice(0, 6)
+        .map((node) => (
+          `${node.assignedWorker}:${node.taskId}:${node.toolPlan.primaryTool}:${node.zoneId}`
+        ));
+      const readyWorkers = Array.from(new Set(
+        graph.nodes
+          .filter((node) => node.status === 'ready')
+          .map((node) => node.assignedWorker)
+      ));
+
+      return factory.createResponse(
+        `Mission plan ready. selectedSource=local-archive selectedSpec=${graph.specId} selectedName="${graph.specName}" ` +
+        `resolution=${resolved.resolvedVia} selectedStructureId=${resolved.id ?? 'ad-hoc'} matchedAlias="${resolved.matchedAlias ?? resolved.title}" ` +
+        `graphId=${graph.graphId} tasks=${graph.nodes.length} blockBudget=${graph.expectedBlocks}. ${compiled.placementSummary}\n` +
+        `readyWorkers=${readyWorkers.join(',') || 'none'} readyPackets=${readyPackets.join(' | ') || 'none'}`
+      );
+    }
+  );
+
+  // 18. compile-landmark-build-graph
   factory.registerTool(
     "compile-landmark-build-graph",
-    "Compile a landmark build graph from a selected spec with dependencies, roles, zones, and block budgets.",
+    "Compile a landmark build graph from a selected spec. By default this auto-picks the nearest usable dry site for the whole landmark footprint before building.",
     {
       specId: z.string().min(1).describe("Landmark spec id from select-landmark-spec"),
       originX: z.coerce.number().describe("Build origin X"),
@@ -1631,28 +2958,37 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       stylePreset: z.string().optional().describe("Optional style preset key from selected spec"),
       prompt: z.string().optional().describe("Optional original mission prompt for parametric adaptation"),
       targetDurationMinutes: z.coerce.number().optional().describe("Target autonomy runtime in minutes (default: 30)"),
-      baseY: z.coerce.number().optional().describe("Optional explicit base Y. If omitted, sampled from terrain.")
+      baseY: z.coerce.number().optional().describe("Optional explicit base Y. If omitted, sampled from terrain."),
+      autoPlace: z.coerce.boolean().optional().describe("Auto-pick the nearest usable dry site for the landmark footprint (default: true)"),
+      searchRadius: z.coerce.number().optional().describe("Auto-placement search radius around requested origin (default: 96)"),
+      searchStep: z.coerce.number().optional().describe("Auto-placement search step size (default: 4)"),
+      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta across the structural footprint during auto-placement (default: 3)"),
+      maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns across the structural footprint during auto-placement (default: 0)"),
+      waterBufferBlocks: z.coerce.number().optional().describe("Reject auto-placement sites too close to water (default: 1)")
     },
     async (params: any) => {
       const autonomy = getLandmarkAutonomyService();
       const bot = getBot();
-      const originX = toInt(params.originX);
-      const originZ = toInt(params.originZ);
-      const sampledBaseY = await getSurfaceHeightAt(bot, originX, originZ);
-      const baseY = params.baseY == null ? sampledBaseY : toInt(params.baseY);
-
-      const graph = await autonomy.compileLandmarkBuildGraph({
+      const prompt = params.prompt ? String(params.prompt) : undefined;
+      const compiled = await compileLandmarkGraphWithPlacement(bot, autonomy, {
         specId: String(params.specId),
-        originX,
-        originZ,
-        baseY,
+        originX: toInt(params.originX),
+        originZ: toInt(params.originZ),
         scale: params.scale ? String(params.scale) : undefined,
         stylePreset: params.stylePreset ? String(params.stylePreset) : undefined,
-        prompt: params.prompt ? String(params.prompt) : undefined,
+        prompt,
         targetDurationMinutes: params.targetDurationMinutes != null
           ? toInt(params.targetDurationMinutes)
-          : undefined
+          : undefined,
+        baseY: params.baseY == null ? undefined : toInt(params.baseY),
+        autoPlace: params.autoPlace == null ? undefined : Boolean(params.autoPlace),
+        searchRadius: params.searchRadius == null ? undefined : toInt(params.searchRadius),
+        searchStep: params.searchStep == null ? undefined : toInt(params.searchStep),
+        maxHeightDelta: params.maxHeightDelta == null ? undefined : toInt(params.maxHeightDelta),
+        maxManMadeColumns: params.maxManMadeColumns == null ? undefined : toInt(params.maxManMadeColumns),
+        waterBufferBlocks: params.waterBufferBlocks == null ? undefined : toInt(params.waterBufferBlocks)
       });
+      const graph = compiled.graph;
 
       const lines = graph.nodes.map((node) => (
         `${node.taskId} owner=${node.assignedOwner} role=${node.role} tool=${node.toolPlan.primaryTool} ` +
@@ -1662,13 +2998,13 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       return factory.createResponse(
         `Compiled graph ${graph.graphId} from spec=${graph.specId} style=${graph.stylePreset} scale=${graph.scale} ` +
         `origin=(${graph.originX},${graph.baseY},${graph.originZ}) tasks=${graph.nodes.length} ` +
-        `blockBudget=${graph.expectedBlocks} targetMinutes=${graph.targetDurationMinutes}.\n` +
+        `blockBudget=${graph.expectedBlocks} targetMinutes=${graph.targetDurationMinutes}. ${compiled.placementSummary}\n` +
         lines.join('\n')
       );
     }
   );
 
-  // 15. allocate-build-graph-zones
+  // 16. allocate-build-graph-zones
   factory.registerTool(
     "allocate-build-graph-zones",
     "Atomically pre-allocate all zones for a compiled landmark graph before workers execute in parallel.",
@@ -1679,7 +3015,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     },
     async (params: any) => {
       const autonomy = getLandmarkAutonomyService();
-      const owner = getOwner();
+      const owner = requireOrchestratorReservationControl(getOwner(), 'allocate-build-graph-zones');
       const graphId = String(params.graphId);
       const clearExistingForOwners = params.clearExistingForOwners == null
         ? true
@@ -1703,7 +3039,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       }
 
       const claimLines = allocated.claims.map((claim) => (
-        `${claim.zoneId} owner=${claim.owner} bounds=${formatBounds(claim)}`
+        `${claim.zoneId} assignedTo=${claim.owner} bounds=${formatBounds(claim)}`
       ));
 
       return factory.createResponse(
@@ -1736,8 +3072,10 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
 
       const task = dispatch.task;
       const paramsJson = JSON.stringify(task.toolPlan.params);
+      const delegateTool = peerToolNameForWorker(task.assignedWorker);
       return factory.createResponse(
         `Dispatch ready for worker=${workerId}: ${formatDispatchTask(task)}\n` +
+        `delegate_tool=${delegateTool}\n` +
         `execute_tool=${task.toolPlan.primaryTool} execute_params=${paramsJson}\n` +
         `note=${task.toolPlan.note}\n` +
         `graphStatus=${dispatch.graphStatus} completion=${Math.round(dispatch.completionRatio * 100)}%`
@@ -1978,8 +3316,92 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         (command) => runServerCommand(bot, command),
         BLOCK_QUEUE_DELAY_MS
       );
+      await autoCompleteGraphTaskForMutation(
+        owner,
+        bounds,
+        `Placed ${blockType} at (${x}, ${y}, ${zCoord})`,
+        1
+      );
 
       return factory.createResponse(`Placed ${blockType} at (${x}, ${y}, ${zCoord})`);
+    }
+  );
+
+  factory.registerTool(
+    "place-grabcraft-shard",
+    "Place one exact GrabCraft shard from a freshly imported placement artifact. Requires an active claimed zone.",
+    {
+      placementFile: z.string().min(1).describe("Absolute path to a grabcraft-placement-plan artifact"),
+      shardId: z.string().min(1).describe("Shard id inside the placement artifact")
+    },
+    async (params: any) => {
+      const bot = getBot();
+      const owner = getOwner();
+      const placementFile = path.resolve(String(params.placementFile));
+      const shardId = String(params.shardId);
+      const raw = await fs.readFile(placementFile, 'utf8');
+      const artifact = JSON.parse(raw) as GrabCraftPlacementArtifact;
+
+      if (artifact.kind !== 'grabcraft-placement-plan') {
+        throw new Error(
+          `Expected a grabcraft-placement-plan artifact, got '${String((artifact as { kind?: string }).kind ?? 'unknown')}'.`
+        );
+      }
+
+      const shard = artifact.shards.find((entry) => entry.shardId === shardId);
+      if (!shard) {
+        throw new Error(`Shard '${shardId}' was not found in ${placementFile}.`);
+      }
+      if (shard.blocks.length === 0) {
+        throw new Error(`Shard '${shardId}' contains no translated blocks.`);
+      }
+
+      const bounds = normalizeBounds(
+        shard.bounds.minX,
+        shard.bounds.minY,
+        shard.bounds.minZ,
+        shard.bounds.maxX,
+        shard.bounds.maxY,
+        shard.bounds.maxZ
+      );
+      await enforceMutatingOperationGuard(bot, owner, bounds, shard.blockCount, 0);
+
+      const centerX = Math.floor((bounds.minX + bounds.maxX) / 2);
+      const centerZ = Math.floor((bounds.minZ + bounds.maxZ) / 2);
+      await walkBotNearXZ(bot, centerX, centerZ, 4);
+
+      const placementCommands = shard.blocks.map((block) => (
+        `/setblock ${block.x} ${block.y} ${block.z} ${block.blockState}`
+      ));
+      const commandBatches = chunkCommands(placementCommands, GRABCRAFT_RCON_BATCH_SIZE);
+      const forceloadAdd = `/forceload add ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
+      const forceloadRemove = `/forceload remove ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
+
+      await streamRconCommands([forceloadAdd], PROJECT_ROOT_DIR);
+      try {
+        for (const batch of commandBatches) {
+          await streamRconCommands(batch, PROJECT_ROOT_DIR);
+        }
+      } finally {
+        try {
+          await streamRconCommands([forceloadRemove], PROJECT_ROOT_DIR);
+        } catch (error) {
+          log('warn', `Failed to remove GrabCraft forceload for ${shardId}: ${formatError(error)}`);
+        }
+      }
+
+      await autoCompleteGraphTaskForMutation(
+        owner,
+        bounds,
+        `Placed exact GrabCraft shard ${shardId} from ${artifact.source.title}`,
+        shard.blockCount
+      );
+
+      return factory.createResponse(
+        `Placed exact GrabCraft shard ${shardId} from "${artifact.source.title}" ` +
+        `blocks=${shard.blockCount} batches=${commandBatches.length} bounds=${formatBounds(bounds)} ` +
+        `source=${artifact.source.pageUrl}`
+      );
     }
   );
 
@@ -2134,11 +3556,18 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
 
       const plannedAirOperations = countAirCommands(commands);
       await enforceMutatingOperationGuard(bot, owner, bounds, commands.length, plannedAirOperations);
+      const placementContext = createPlacementExecutionContext(true);
 
       await placementQueue.enqueueCommands(
         commands,
-        (command) => runServerCommand(bot, command),
+        (command) => runServerCommand(bot, command, placementContext),
         BLOCK_QUEUE_DELAY_MS
+      );
+      await autoCompleteGraphTaskForMutation(
+        owner,
+        bounds,
+        `Built ${style} solid-roof flat house at (${centerX}, ${baseY}, ${centerZ})`,
+        commands.length
       );
 
       return factory.createResponse(
@@ -2153,7 +3582,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 13. fill-region
   factory.registerTool(
     "fill-region",
-    "Fill a rectangular region block-by-block. Requires an active claimed zone.",
+    "Fill a rectangular region in small visible patch fills. Requires an active claimed zone.",
     {
       x1: z.coerce.number().describe("Start X"),
       y1: z.coerce.number().describe("Start Y"),
@@ -2166,6 +3595,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     async (params: any) => {
       const bot = getBot();
       const owner = getOwner();
+      const normalizedBlockType = normalizeBlockType(String(params.blockType));
       const bounds = normalizeBounds(
         toInt(params.x1),
         toInt(params.y1),
@@ -2174,19 +3604,21 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         toInt(params.y2),
         toInt(params.z2)
       );
-      const commands = cuboidSetBlockCommands(bounds, String(params.blockType));
-      const airOps = countAirCommands(commands);
+      const plannedOperations = getVolume(bounds);
+      const airOps = normalizedBlockType === 'minecraft:air' ? plannedOperations : 0;
+      const batches = buildFillBatches(bounds, normalizedBlockType, FILL_BATCH_TILE_SPAN);
 
-      await enforceMutatingOperationGuard(bot, owner, bounds, commands.length, airOps);
-
-      await placementQueue.enqueueCommands(
-        commands,
-        (command) => runServerCommand(bot, command),
-        BLOCK_QUEUE_DELAY_MS
+      await enforceMutatingOperationGuard(bot, owner, bounds, plannedOperations, airOps);
+      await runFillBatches(bot, bounds, batches);
+      await autoCompleteGraphTaskForMutation(
+        owner,
+        bounds,
+        `Filled region ${formatBounds(bounds)} with ${normalizedBlockType}`,
+        plannedOperations
       );
 
       return factory.createResponse(
-        `Filled region ${formatBounds(bounds)} with ${normalizeBlockType(String(params.blockType))} using ${commands.length} edits`
+        `Filled region ${formatBounds(bounds)} with ${normalizedBlockType} using ${plannedOperations} block edits across ${batches.length} patch fills`
       );
     }
   );
@@ -2279,6 +3711,12 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         commands,
         (command) => runServerCommand(bot, command),
         BLOCK_QUEUE_DELAY_MS
+      );
+      await autoCompleteGraphTaskForMutation(
+        owner,
+        bounds,
+        `Flattened area (${minX},${minZ})-(${maxX},${maxZ}) to Y=${targetY}`,
+        commands.length
       );
 
       return factory.createResponse(
@@ -2462,9 +3900,10 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const bounds = normalizeBounds(minX, minY, minZ, maxX, maxY, maxZ);
 
       await enforceMutatingOperationGuard(bot, owner, bounds, commands.length, 0);
+      const placementContext = createPlacementExecutionContext(true);
       await placementQueue.enqueueCommands(
         commands,
-        (command) => runServerCommand(bot, command),
+        (command) => runServerCommand(bot, command, placementContext),
         BLOCK_QUEUE_DELAY_MS
       );
 

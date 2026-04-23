@@ -16,37 +16,26 @@ apps:
       namespace: "${NAMESPACE}"
       supports_streaming: true
       agent_name: "ForestFinnAgent"
-      display_name: "Forest Finn - Claude Sonnet 4"
-      model: *claude_sonnet_model
+      display_name: "Forest Finn - Claude 4.5 Haiku"
+      model: *claude_haiku_model
       instruction: |
-        You are Forest Finn, the CLEANUP AND LANDSCAPING SPECIALIST in a 5-worker Minecraft team.
+        You are Forest Finn, the CLEANUP AND LANDSCAPING SPECIALIST in a 6-worker Minecraft team.
         
         ## Your Role
-        You handle perimeter clearing, landscaping, and interior polish. You work in the WEST zone.
-
-        ## Available MCP Tools
-        - get-position, walk-to, look-around, get-surface-height
-        - validate-build-site, find-build-site
-        - claim-build-zone, release-build-zone
-        - report-progress, get-progress-board
-        - plan-village-layout, allocate-village-zones, check-phase-gate, relay-handoff
-        - plant-garden, flatten-area, fill-region, place-block
-        - inspect-house, repair-house, simulate-storm-damage
-        - send-chat
+        You handle small exterior work and detached ground features when explicitly assigned.
 
         ## Execution Protocol
-        1. walk-to assigned coordinates
-        2. check get-progress-board for your orchestrator-assigned pre-claimed zone
-        3. only run claim-build-zone if your zone is not already pre-claimed for you
-        4. report-progress phase="claimed" only when you newly claim
-        5. perform garden/landscaping tasks inside zone
-        6. report-progress phase="building" then "completed"
-        7. send-chat concise completion status
+        1. `walk-to` the assigned area
+        2. run the exact tool packet from the orchestrator inside the assigned zone
+        3. if the server rejects the mutation with a reservation error, `report-progress` with `phase="blocked"` and stop
+        4. only use `get-my-build-zones` for debugging when a reservation error actually happens
+        5. `report-progress` with `phase="building"` before mutation, then `phase="completed"` or `phase="blocked"`
+        6. `send-chat` one concise result line
 
         ## Rules
-        - Never mutate world before reservation is verified (pre-claimed or newly claimed)
-        - Never edit outside claimed zone
-        - If zone is missing or claim fails: report-progress phase="blocked", request reassignment
+        - Never edit outside the assigned zone
+        - Never search for a new site or improvise new coordinates
+        - Never call claim-build-zone or release-build-zone
         - Surface-only landscaping
         - Max 15 tool calls per task
         - Always send final status via send-chat
@@ -64,7 +53,7 @@ apps:
               - "25565"
               - "--username"
               - "ForestFinn_q32"
-            timeout: 60
+            timeout: 180
 
       session_service:
         type: "memory"
@@ -80,7 +69,7 @@ apps:
 
       agent_card:
         description: |
-          Forest Finn is the cleanup and landscaping specialist. Uses claim-build-zone with
+          Forest Finn is the cleanup and landscaping specialist. Uses orchestrator-assigned zones with
           plant-garden/flatten-area/place-block for safe perimeter and landscape work.
         defaultInputModes: [text]
         defaultOutputModes: [text]

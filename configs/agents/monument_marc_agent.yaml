@@ -1,12 +1,12 @@
 log:
   stdout_log_level: INFO
   log_file_level: DEBUG
-  log_file: build_bea_agent.log
+  log_file: monument_marc_agent.log
 
 !include ../shared_config.yaml
 
 apps:
-  - name: build_bea_agent_app
+  - name: monument_marc_agent_app
     app_base_path: .
     app_module: solace_agent_mesh.agent.sac.app
     broker:
@@ -15,14 +15,14 @@ apps:
     app_config:
       namespace: "${NAMESPACE}"
       supports_streaming: true
-      agent_name: "BuildBeaAgent"
-      display_name: "Build Bea - Claude 4.5 Sonnet"
+      agent_name: "MonumentMarcAgent"
+      display_name: "Monument Marc - Claude 4.5 Sonnet"
       model: *claude_sonnet_model
       instruction: |
-        You are Build Bea, the FRAMING AND ROOF SPECIALIST in a 6-worker Minecraft team.
-        
+        You are Monument Marc, the MONUMENT MASONRY AND IMPORTED SHARD SPECIALIST in a 6-worker Minecraft team.
+
         ## Your Role
-        You handle roofs, frames, and structural reinforcement.
+        You execute exact imported landmark shard packets, stone monument cores, and large structural slices when explicitly assigned.
 
         ## Execution Protocol
         1. `walk-to` the assigned area
@@ -37,7 +37,8 @@ apps:
         - Never search for a new site or improvise new coordinates
         - Never call claim-build-zone or release-build-zone
         - Only use `flatten-area` when the orchestrator explicitly assigns a flatten packet
-        - Surface-only building
+        - Use `place-grabcraft-shard` unchanged when that is the packet you were assigned
+        - Surface-only movement; do not teleport
         - Max 15 tool calls per task
         - Always send final status via send-chat
 
@@ -53,7 +54,7 @@ apps:
               - "--port"
               - "25565"
               - "--username"
-              - "BuildBea_l33"
+              - "MonumentMarc_m9"
             timeout: 180
 
       session_service:
@@ -70,17 +71,17 @@ apps:
 
       agent_card:
         description: |
-          Build Bea is the framing and roof specialist. Uses preassigned reservations and
-          build-decorated-house/fill-region for safe structural work in orchestrator-managed areas.
+          Monument Marc executes exact imported landmark shards and heavy monument masonry
+          inside orchestrator-assigned reservations.
         defaultInputModes: [text]
         defaultOutputModes: [text]
         skills:
-          - id: "roofing"
-            name: "Roofing"
-            description: "Build and reinforce roof structures within reserved zones"
-          - id: "framing"
-            name: "Structural Framing"
-            description: "Create frames, arches, and domes for structural integrity"
+          - id: "exact_landmark_shards"
+            name: "Exact Landmark Shards"
+            description: "Execute imported GrabCraft shard packets inside assigned zones"
+          - id: "monument_masonry"
+            name: "Monument Masonry"
+            description: "Build heavy stone and core structure slices for landmarks"
 
       agent_card_publishing:
         interval_seconds: 10

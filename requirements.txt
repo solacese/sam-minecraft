@@ -1,1 +1,2 @@
 solace-agent-mesh~=1.17.1
+nbtlib~=2.0.4

@@ -13,6 +13,7 @@ export interface BoundingBox {
 export interface ZoneClaim extends BoundingBox {
   zoneId: string;
   owner: string;
+  spacingBlocks: number;
   createdAt: number;
   updatedAt: number;
   expiresAt: number;
@@ -54,6 +55,7 @@ export interface ZoneAllocationInput {
   owner: string;
   bounds: BoundingBox;
   ttlSeconds?: number;
+  spacingBlocks?: number;
 }
 
 export interface BatchClaimOptions {
@@ -69,7 +71,8 @@ export interface BatchClaimResult {
 
 const DEFAULT_LOCK_RETRIES = 120;
 const LOCK_RETRY_MS = 25;
-const MIN_ZONE_FOOTPRINT_GAP_BLOCKS = 2;
+export const MIN_ZONE_FOOTPRINT_GAP_BLOCKS = 2;
+const DEFAULT_ZONE_SPACING_BLOCKS = MIN_ZONE_FOOTPRINT_GAP_BLOCKS;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -147,7 +150,8 @@ export class BuildCoordinationStore {
     owner: string,
     zoneId: string,
     bounds: BoundingBox,
-    ttlSeconds = 900
+    ttlSeconds = 900,
+    spacingBlocks = DEFAULT_ZONE_SPACING_BLOCKS
   ): Promise<ClaimResult> {
     return this.withFileLock(this.claimsFile, async () => {
       const state = await this.readJsonFile<ClaimState>(this.claimsFile, { claims: [] });
@@ -158,7 +162,7 @@ export class BuildCoordinationStore {
       const conflict = cleanedClaims.find(
         (existing) =>
           existing.owner !== owner &&
-          boxesOverlapWithGap(existing, bounds, MIN_ZONE_FOOTPRINT_GAP_BLOCKS)
+          boxesOverlapWithGap(existing, bounds, Math.max(this.claimSpacing(existing), normalizeSpacing(spacingBlocks)))
       );
 
       if (conflict) {
@@ -180,6 +184,7 @@ export class BuildCoordinationStore {
         ...bounds,
         zoneId: normalizedZoneId,
         owner,
+        spacingBlocks: normalizeSpacing(spacingBlocks),
         createdAt: existingIndex >= 0 ? cleanedClaims[existingIndex].createdAt : now,
         updatedAt: now,
         expiresAt: now + Math.max(30, Math.floor(ttlSeconds)) * 1000
@@ -197,9 +202,9 @@ export class BuildCoordinationStore {
         ok: true,
         claim,
         message:
-          `Zone '${claim.zoneId}' claimed for ${owner}: ` +
+          `Zone '${claim.zoneId}' reserved for ${owner}: ` +
           `(${claim.minX},${claim.minY},${claim.minZ})-(${claim.maxX},${claim.maxY},${claim.maxZ}) ` +
-          `TTL=${Math.floor((claim.expiresAt - now) / 1000)}s`
+          `TTL=${Math.floor((claim.expiresAt - now) / 1000)}s spacing=${claim.spacingBlocks}`
       };
     });
   }
@@ -235,7 +240,7 @@ export class BuildCoordinationStore {
       await this.writeJsonFile(this.claimsFile, { claims });
 
       const conflict = claims.find(
-        (claim) => claim.owner !== owner && boxesOverlapWithGap(claim, bounds, MIN_ZONE_FOOTPRINT_GAP_BLOCKS)
+        (claim) => claim.owner !== owner && boxesOverlapWithGap(claim, bounds, this.claimSpacing(claim))
       );
       if (conflict) {
         return {
@@ -254,7 +259,8 @@ export class BuildCoordinationStore {
         return {
           ok: false,
           message:
-            `Operation area is not fully reserved by ${owner}. Use claim-build-zone first.`
+            `Operation area is not fully preassigned to ${owner}. ` +
+            `Only the orchestrator may claim or release zones; request assignment instead.`
         };
       }
 
@@ -288,7 +294,8 @@ export class BuildCoordinationStore {
         zoneId: allocation.zoneId.trim(),
         owner: allocation.owner.trim(),
         bounds: allocation.bounds,
-        ttlSeconds: Math.max(30, Math.floor(allocation.ttlSeconds ?? 900))
+        ttlSeconds: Math.max(30, Math.floor(allocation.ttlSeconds ?? 900)),
+        spacingBlocks: normalizeSpacing(allocation.spacingBlocks)
       }));
 
       const invalid = normalizedAllocations.find(
@@ -312,7 +319,11 @@ export class BuildCoordinationStore {
         const conflict = nextClaims.find(
           (existing) =>
             existing.owner !== allocation.owner &&
-            boxesOverlapWithGap(existing, allocation.bounds, MIN_ZONE_FOOTPRINT_GAP_BLOCKS)
+            boxesOverlapWithGap(
+              existing,
+              allocation.bounds,
+              Math.max(this.claimSpacing(existing), allocation.spacingBlocks)
+            )
         );
 
         if (conflict) {
@@ -334,6 +345,7 @@ export class BuildCoordinationStore {
           ...allocation.bounds,
           zoneId: allocation.zoneId,
           owner: allocation.owner,
+          spacingBlocks: allocation.spacingBlocks,
           createdAt: existingIndex >= 0 ? nextClaims[existingIndex].createdAt : now,
           updatedAt: now,
           expiresAt: now + allocation.ttlSeconds * 1000
@@ -354,8 +366,8 @@ export class BuildCoordinationStore {
         ok: true,
         claims: createdClaims,
         message:
-          `Allocated ${createdClaims.length} zones atomically for owners: ${owners}. ` +
-          `All workers can start in parallel.`
+          `Allocated ${createdClaims.length} zones atomically for assignees: ${owners}. ` +
+          `Workers can start without self-claiming.`
       };
     });
   }
@@ -401,6 +413,10 @@ export class BuildCoordinationStore {
 
   private removeExpiredClaims(claims: ZoneClaim[], now: number): ZoneClaim[] {
     return claims.filter((claim) => claim.expiresAt > now);
+  }
+
+  private claimSpacing(claim: Pick<ZoneClaim, 'spacingBlocks'>): number {
+    return normalizeSpacing(claim.spacingBlocks);
   }
 
   private async withFileLock<T>(targetFile: string, operation: () => Promise<T>): Promise<T> {
@@ -449,4 +465,8 @@ export class BuildCoordinationStore {
     await fs.writeFile(tmpFile, JSON.stringify(data, null, 2), 'utf8');
     await fs.rename(tmpFile, filePath);
   }
+}
+
+function normalizeSpacing(spacingBlocks: number | undefined): number {
+  return Math.max(0, Math.floor(spacingBlocks ?? DEFAULT_ZONE_SPACING_BLOCKS));
 }
