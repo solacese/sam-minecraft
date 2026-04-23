@@ -2,7 +2,7 @@
 
 **Seven AI agents collaborate in real-time to build landmarks and villages in Minecraft.**
 
-Built on [Solace Agent Mesh (SAM)](https://github.com/SolaceLabs/solace-agent-mesh), this demo showcases multi-agent orchestration, parallel task execution, and autonomous build planning — all through natural language.
+Built on [Solace Agent Mesh (SAM)](https://github.com/SolaceLabs/solace-agent-mesh), this demo showcases multi-agent orchestration, parallel task execution, and autonomous build planning, all through natural language.
 
 > _"Build the Eiffel Tower at x=100 z=100, medium scale"_ — and watch seven agents coordinate to make it happen.
 
