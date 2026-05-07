@@ -37,6 +37,9 @@ export LITELLM_API_KEY="sk-..."
 
 That's it. The script handles Minecraft server, Python venv, Node dependencies, MCP build, and agent startup.
 
+> **Note:** The demo includes its own Minecraft server via Docker — you do NOT need to own Minecraft.
+> A Minecraft Java Edition client is optional for visual spectating only. All agent interaction happens through the WebUI at port 8000.
+
 ---
 
 ## Try These Prompts
@@ -235,6 +238,20 @@ sam-minecraft/
 ## Troubleshooting
 
 **"LITELLM_API_KEY environment variable is not set"** — `export LITELLM_API_KEY="sk-..."`
+
+**Docker permission denied (Linux)**
+```bash
+sudo usermod -aG docker $USER
+# Log out and back in (or run: newgrp docker)
+```
+
+**"Port 25565 doesn't work in my browser"**
+- Port 25565 is Minecraft's game protocol, not HTTP — it won't open in Chrome.
+- The **WebUI** is at `http://127.0.0.1:8000` — that's where you send prompts and watch progress.
+- To spectate visually in-game, open **Minecraft Java Edition** (v1.21.4) → Multiplayer → `localhost:25565`.
+- A Minecraft client is entirely optional — the demo works fully through the WebUI.
+
+**Slow first startup** — First run downloads the Minecraft server image (~800MB). Subsequent starts are fast.
 
 **Docker DNS issues** — Restart Docker Desktop. Check VPN/firewall.
 
