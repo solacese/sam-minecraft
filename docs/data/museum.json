@@ -8,7 +8,7 @@
   "minecraft": {
     "host": "ec2-16-54-209-252.ca-central-1.compute.amazonaws.com",
     "port": "25565",
-    "note": "Public Minecraft Java server hosted on AWS. Visitors join a normal, non-flat world in adventure mode and can talk to guide agents in-game."
+    "note": "Public Minecraft Java server hosted on AWS. Visitors join a normal, non-flat world in creative mode and can talk to guide agents in-game."
   },
   "request": {
     "apiEndpoint": "",

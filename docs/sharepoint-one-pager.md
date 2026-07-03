@@ -46,4 +46,4 @@ This gives us a repeatable way to show multi-agent coordination: planning, deleg
 
 ## Safety Model
 
-Public visitors can chat, tour, and request. They do not get direct build tools. Build requests are queued, rate-limited, and reviewed. The live museum world has snapshots so it can be restored if a build fails.
+Public visitors can chat, tour, request, and currently join in creative mode for filming and hands-on exploration. Reviewed build requests are still queued and rate-limited for coordinated agent demos. The live museum world should have snapshots so it can be restored if a build fails.

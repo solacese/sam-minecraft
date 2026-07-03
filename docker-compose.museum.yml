@@ -16,7 +16,7 @@ services:
       MAX_PLAYERS: "${MC_MAX_PLAYERS:-40}"
       SEED: "${MC_SEED:-sam-minecraft-museum-natural}"
       GENERATE_STRUCTURES: "false"
-      MODE: "adventure"
+      MODE: "creative"
       FORCE_GAMEMODE: "TRUE"
       DIFFICULTY: "peaceful"
       PVP: "FALSE"
