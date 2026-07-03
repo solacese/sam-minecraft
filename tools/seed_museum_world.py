@@ -16,20 +16,10 @@ from typing import Iterable
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 FALLBACK_BASE_Y = 68
 MIN_WORLD_Y = -64
-MAX_PROBE_Y = 220
+MAX_PROBE_Y = 319
 MAX_BUILD_BASE_Y = 88
 FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
-
-IGNORED_GROUND_BLOCKS = (
-    "minecraft:air",
-    "minecraft:cave_air",
-    "minecraft:void_air",
-    "minecraft:water",
-    "minecraft:lava",
-    "minecraft:snow",
-    "minecraft:powder_snow",
-)
 
 GRAVITY_REPLACEMENTS = {
     "minecraft:white_concrete_powder": "minecraft:white_concrete",
@@ -140,15 +130,14 @@ def fill_commands(x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, block: s
 
 
 def ground_probe_command(x: int, y: int, z: int) -> str:
-    clauses = " ".join(f"unless block {x} {y} {z} {block}" for block in IGNORED_GROUND_BLOCKS)
-    return f"execute {clauses}"
+    return f"execute if block {x} {y} {z} minecraft:air"
 
 
 def find_ground_y(x: int, z: int, compose_file: str) -> int:
     probe_ys = list(range(MAX_PROBE_Y, MIN_WORLD_Y - 1, -1))
     stdout = rcon_capture([ground_probe_command(x, y, z) for y in probe_ys], compose_file)
     for y, line in zip(probe_ys, rcon_lines(stdout)):
-        if "Test passed" in line:
+        if "Test failed" in line:
             return y
     print(f"WARNING: could not find terrain at {x},{z}; falling back to Y {FALLBACK_BASE_Y - 1}", flush=True)
     return FALLBACK_BASE_Y - 1
