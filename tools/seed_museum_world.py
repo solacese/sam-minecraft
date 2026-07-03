@@ -350,13 +350,6 @@ def marker_commands(exhibit_centers: dict[str, tuple[int, int]], base_y: int) ->
         commands.extend(fill_commands(marker_x - 4, surface_y, marker_z - 4, marker_x + 4, surface_y, marker_z + 4, floor_block))
         commands.extend(fill_commands(marker_x, base_y, marker_z, marker_x, base_y + 22, marker_z, glass_block))
         commands.append(f"setblock {marker_x} {base_y + 23} {marker_z} sea_lantern")
-        commands.append(
-            "summon armor_stand "
-            f"{marker_x + 0.5} {base_y + 25} {marker_z + 0.5} "
-            "{Invisible:1b,NoGravity:1b,CustomNameVisible:1b,"
-            f"CustomName:'{{\"text\":\"{title}\",\"color\":\"gold\",\"bold\":true}}'"
-            "}"
-        )
     return commands
 
 
