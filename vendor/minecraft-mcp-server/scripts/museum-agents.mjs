@@ -1,24 +1,20 @@
 import mineflayer from 'mineflayer';
-import pathfinderPkg from 'mineflayer-pathfinder';
-
-const { pathfinder, Movements, goals } = pathfinderPkg;
-const { GoalNearXZ } = goals;
 
 const host = process.env.MC_HOST || 'localhost';
 const port = Number(process.env.MC_PORT || 25565);
 const CHATTER_LINES_PER_AGENT = 50;
 const CHATTER_INTERVAL_MS = 6500;
 const MOVEMENT_PAUSE_MS = 9000;
-const MOVEMENT_TIMEOUT_MS = 14000;
+const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 
 const waypoints = [
   { label: 'spawn overlook', x: 0, z: -165 },
-  { label: 'Munich origin exhibit', x: 0, z: -52 },
-  { label: 'Eiffel Tower east plaza', x: 145, z: -43 },
-  { label: 'Sydney Opera House west plaza', x: -145, z: -50 },
-  { label: 'Leaning Tower of Pisa southwest plaza', x: -100, z: 82 },
-  { label: 'Colosseum south plaza', x: 0, z: 80 },
-  { label: 'Neuschwanstein southeast plaza', x: 110, z: 77 }
+  { label: 'Munich origin exhibit', x: 8, z: -52 },
+  { label: 'Eiffel Tower east plaza', x: 153, z: -43 },
+  { label: 'Sydney Opera House west plaza', x: -137, z: -50 },
+  { label: 'Leaning Tower of Pisa southwest plaza', x: -92, z: 82 },
+  { label: 'Colosseum south plaza', x: 8, z: 80 },
+  { label: 'Neuschwanstein southeast plaza', x: 118, z: 77 }
 ];
 
 const agents = [
@@ -175,31 +171,12 @@ function startChatter(bot, agent, index, isActive) {
   setTimeout(sendNext, 3500 + index * 1100);
 }
 
-async function goNear(bot, waypoint) {
-  if (!bot.pathfinder?.goto || !GoalNearXZ) {
-    return;
-  }
-  const movement = bot.pathfinder.goto(new GoalNearXZ(waypoint.x, waypoint.z, 4));
-  const timeout = sleep(MOVEMENT_TIMEOUT_MS).then(() => {
-    throw new Error('movement timeout');
-  });
-  await Promise.race([movement, timeout]);
-}
-
 async function startMovement(bot, agent, index, isActive) {
   await sleep(5000 + index * 700);
   let waypointIndex = index % waypoints.length;
   while (isActive()) {
     const waypoint = waypoints[waypointIndex % waypoints.length];
-    try {
-      await goNear(bot, waypoint);
-      bot.lookAt(bot.entity.position.offset(0, 0, 1), false);
-    } catch (error) {
-      console.error(`${agent.username} movement`, error.message);
-      if (bot.pathfinder?.stop) {
-        bot.pathfinder.stop();
-      }
-    }
+    bot.chat(`/tp ${agent.username} ${waypoint.x} ${PATROL_Y} ${waypoint.z}`);
     waypointIndex += 2;
     await sleep(MOVEMENT_PAUSE_MS + index * 500);
   }
@@ -216,17 +193,10 @@ function createAgent(agent, index) {
     hideErrors: false
   });
 
-  bot.loadPlugin(pathfinder);
-
   bot.once('spawn', async () => {
-    const defaultMove = new Movements(bot);
-    defaultMove.canDig = false;
-    defaultMove.allow1by1towers = false;
-    bot.pathfinder.setMovements(defaultMove);
-
     await sleep(1000 + index * 700);
-    const homeY = Math.ceil(bot.entity.position.y);
-    bot.chat(`/tp ${agent.username} ${agent.home.x} ${homeY} ${agent.home.z}`);
+    bot.chat(`/tp ${agent.username} ${agent.home.x} ${PATROL_Y} ${agent.home.z}`);
+    bot.chat(`/effect give ${agent.username} minecraft:glowing 999999 0 true`);
     await sleep(300);
     bot.chat(`${agent.label} online: ${agent.role}. I am patrolling the origin museum cluster.`);
     startChatter(bot, agent, index, () => active);

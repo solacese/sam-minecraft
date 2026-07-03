@@ -44,6 +44,15 @@ LANDMARK_MARKERS = {
     "neuschwanstein": ("Neuschwanstein Castle", "minecraft:purple_concrete", "minecraft:purple_stained_glass", 0, -38),
 }
 
+GUIDE_AGENTS = [
+    "OrchGuide_o11",
+    "DesignDora_l4s",
+    "BuildBea_l33",
+    "MonumentMarc_m9",
+    "SupplySid_l31",
+    "ForestFinn_q32",
+]
+
 GRAVITY_REPLACEMENTS = {
     "minecraft:white_concrete_powder": "minecraft:white_concrete",
     "minecraft:orange_concrete_powder": "minecraft:orange_concrete",
@@ -377,6 +386,7 @@ def paths_and_spawn(spawn_base_y: int) -> list[str]:
         "weather clear 1000000",
         "defaultgamemode creative",
         "gamemode creative @a",
+        *[f"op {agent}" for agent in GUIDE_AGENTS],
         f"setworldspawn {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
         f"spawnpoint @a {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
         f"tp @a {SPAWN_X} {spawn_base_y + 1} {SPAWN_Z - 4} 0 10",
