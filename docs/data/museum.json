@@ -2,13 +2,13 @@
   "urls": {
     "museum": "https://solacese.github.io/sam-minecraft/",
     "museumLabel": "solacese.github.io/sam-minecraft",
-    "chat": "https://chat.example.com",
-    "chatLabel": "chat.example.com"
+    "chat": "https://solacese.github.io/sam-minecraft/#agents",
+    "chatLabel": "In-game guide agents"
   },
   "minecraft": {
-    "host": "mc.example.com",
+    "host": "ec2-16-54-209-252.ca-central-1.compute.amazonaws.com",
     "port": "25565",
-    "note": "Replace mc.example.com and chat.example.com after the durable AWS server is live."
+    "note": "Public Minecraft Java server hosted on AWS. Visitors join in adventure mode and can talk to guide agents in-game."
   },
   "request": {
     "apiEndpoint": "",

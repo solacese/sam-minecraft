@@ -5,11 +5,11 @@
 | Resource | Address |
 |---|---|
 | Museum website | `https://solacese.github.io/sam-minecraft/` |
-| Agent chat | `https://chat.example.com` |
-| Minecraft Java server | `mc.example.com:25565` |
+| Agent chat | In-game on the Minecraft server |
+| Minecraft Java server | `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565` |
 | Request a new model | Use the request form on the museum website |
 
-Replace `chat.example.com` and `mc.example.com` after the durable AWS server is live.
+The current AWS Elastic IP is `16.54.209.252`.
 
 ## What This Is
 
@@ -40,7 +40,7 @@ This gives us a repeatable way to show multi-agent coordination: planning, deleg
 
 1. Open Minecraft Java Edition 1.21.4.
 2. Go to Multiplayer.
-3. Add server: `mc.example.com:25565`.
+3. Add server: `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
 4. Join the world and start at the museum spawn.
 5. Use the museum website for recordings, requests, and agent chat.
 

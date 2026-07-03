@@ -3,8 +3,8 @@
 ## Target Experience
 
 - Public museum website on GitHub Pages.
-- Always-on Minecraft Java server at `mc.example.com:25565`.
-- Agent chat at `chat.example.com`.
+- Always-on Minecraft Java server at `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
+- Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
 - A baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Architecture Tower, Colosseum, and Neuschwanstein Castle.
 
