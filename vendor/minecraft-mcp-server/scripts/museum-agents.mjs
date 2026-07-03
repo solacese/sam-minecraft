@@ -1,95 +1,213 @@
 import mineflayer from 'mineflayer';
+import pathfinderPkg from 'mineflayer-pathfinder';
+
+const { pathfinder, Movements, goals } = pathfinderPkg;
+const { GoalNearXZ } = goals;
 
 const host = process.env.MC_HOST || 'localhost';
 const port = Number(process.env.MC_PORT || 25565);
+const CHATTER_LINES_PER_AGENT = 50;
+const CHATTER_INTERVAL_MS = 6500;
+const MOVEMENT_PAUSE_MS = 9000;
+const MOVEMENT_TIMEOUT_MS = 14000;
+
+const waypoints = [
+  { label: 'spawn overlook', x: 0, z: -165 },
+  { label: 'Munich origin exhibit', x: 0, z: -52 },
+  { label: 'Eiffel Tower east plaza', x: 145, z: -43 },
+  { label: 'Sydney Opera House west plaza', x: -145, z: -50 },
+  { label: 'Leaning Tower of Pisa southwest plaza', x: -100, z: 82 },
+  { label: 'Colosseum south plaza', x: 0, z: 80 },
+  { label: 'Neuschwanstein southeast plaza', x: 110, z: 77 }
+];
 
 const agents = [
   {
     username: 'OrchGuide_o11',
     label: 'Orchestrator',
     role: 'museum guide and mission control',
-    home: { x: 0, z: -102 },
-    aliases: ['orchestrator', 'orch', 'guide', 'agent'],
-    topics: ['tour', 'help', 'agents', 'museum']
+    home: { x: 0, z: -165 },
+    aliases: ['orchestrator', 'orch', 'guide', 'agent', 'sam'],
+    topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat']
   },
   {
     username: 'DesignDora_l4s',
     label: 'Design Dora',
     role: 'site planner',
-    home: { x: -10, z: -96 },
-    aliases: ['dora', 'design'],
-    topics: ['site', 'path', 'plaza', 'layout']
+    home: { x: -16, z: -160 },
+    aliases: ['dora', 'design', 'planner'],
+    topics: ['site', 'path', 'plaza', 'layout', 'route', 'spawn']
   },
   {
     username: 'BuildBea_l33',
     label: 'Build Bea',
     role: 'structure specialist',
-    home: { x: -5, z: -96 },
-    aliases: ['bea', 'build'],
-    topics: ['structure', 'layers', 'tower', 'build']
+    home: { x: -8, z: -160 },
+    aliases: ['bea', 'build', 'builder'],
+    topics: ['structure', 'layers', 'tower', 'build', 'blocks', 'height']
   },
   {
     username: 'MonumentMarc_m9',
     label: 'Monument Marc',
     role: 'landmark fidelity specialist',
-    home: { x: 0, z: -96 },
+    home: { x: 0, z: -160 },
     aliases: ['marc', 'monument'],
-    topics: ['munich', 'eiffel', 'landmark', 'silhouette']
+    topics: ['munich', 'eiffel', 'sydney', 'pisa', 'colosseum', 'neuschwanstein', 'landmark', 'silhouette']
   },
   {
     username: 'SupplySid_l31',
     label: 'Supply Sid',
     role: 'materials and finishing specialist',
-    home: { x: 5, z: -96 },
-    aliases: ['sid', 'supply'],
-    topics: ['materials', 'palette', 'finish', 'glass']
+    home: { x: 8, z: -160 },
+    aliases: ['sid', 'supply', 'materials'],
+    topics: ['materials', 'palette', 'finish', 'glass', 'marker', 'beacon']
   },
   {
     username: 'ForestFinn_q32',
     label: 'Forest Finn',
     role: 'landscaping specialist',
-    home: { x: 10, z: -96 },
-    aliases: ['finn', 'forest'],
-    topics: ['landscape', 'garden', 'trees', 'outside']
+    home: { x: 16, z: -160 },
+    aliases: ['finn', 'forest', 'landscape'],
+    topics: ['landscape', 'garden', 'trees', 'outside', 'terrain', 'ground']
   }
 ];
 
 const agentNames = new Set(agents.map((agent) => agent.username.toLowerCase()));
+const chatterTemplates = [
+  'checking sightlines around {place}',
+  'marking visitor flow from {place}',
+  'confirming the colored beacon at {place}',
+  'reviewing whether {place} reads clearly from spawn',
+  'logging a museum activity beat near {place}',
+  'cross-checking structure scale at {place}',
+  'watching visitor movement past {place}',
+  'calling out the next tour stop: {place}',
+  'checking that {place} is not hidden behind Munich',
+  'keeping the origin-cluster route alive near {place}'
+];
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalize(message) {
+  return message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
+}
+
+function addressedTo(agent, text) {
+  const labelTokens = agent.label.toLowerCase().split(/\s+/);
+  return [...agent.aliases, ...labelTokens, agent.username.toLowerCase()]
+    .some((token) => text.includes(token));
+}
+
+function addressedAgents(text) {
+  return agents.filter((agent) => addressedTo(agent, text));
+}
+
 function shouldRespond(agent, message) {
-  const text = message.toLowerCase();
-  if (agent.username === 'OrchGuide_o11' && /\b(help|tour|agents|museum|where|what)\b/.test(text)) {
+  const text = normalize(message);
+  const addressed = addressedAgents(text);
+  if (addressed.length > 0) {
+    return addressed.some((target) => target.username === agent.username);
+  }
+  if (/\b(all|everyone|team|agents|guides)\b/.test(text)) {
     return true;
   }
-  return [...agent.aliases, ...agent.topics].some((token) => text.includes(token));
+  if ([...agent.topics].some((topic) => text.includes(topic))) {
+    return true;
+  }
+  return agent.username === 'OrchGuide_o11' && text.trim().length > 0;
 }
 
 function responseFor(agent, username, message) {
-  const text = message.toLowerCase();
+  const text = normalize(message);
   if (text.includes('tour') || text.includes('where')) {
-    return `${username}, start at spawn: Munich is at the origin, Eiffel is just east, Sydney is west, Architecture Tower is southwest, Colosseum is south, and Neuschwanstein is southeast.`;
+    return `${username}, start at spawn: Munich is at 0,0, Eiffel is east, Sydney is west, Pisa is southwest, Colosseum is south, and Neuschwanstein is southeast.`;
   }
-  if (text.includes('agents') || text.includes('help')) {
-    return `We are six museum agents: orchestration, site planning, structure, landmark fidelity, materials, and landscaping. Ask any of our names for details.`;
+  if (text.includes('agents') || text.includes('help') || text.includes('team')) {
+    return `${username}, we are six guide agents. We answer chat, patrol waypoints, and post coordination updates while the museum stays in creative mode.`;
+  }
+  if (text.includes('alive') || text.includes('move') || text.includes('walking')) {
+    return `${username}, each guide is cycling through exhibit waypoints and has 50 coordination messages queued for the activity stream.`;
   }
   if (text.includes('munich')) {
-    return `${username}, the Munich exhibit is the flagship OTS build at the museum center. It is staged for filming and agent coordination.`;
+    return `${username}, Munich is the large OTS flagship at the origin. Use it as the center marker for the full cluster.`;
   }
   if (text.includes('eiffel')) {
-    return `${username}, the Eiffel exhibit demonstrates staged foundations, platforms, tapering, and a spire from a curated landmark spec.`;
+    return `${username}, Eiffel is east of Munich with a yellow marker and full-height tower profile.`;
+  }
+  if (text.includes('sydney')) {
+    return `${username}, Sydney is west of Munich with a white marker and the imported Opera House model.`;
+  }
+  if (text.includes('pisa') || text.includes('architecture')) {
+    return `${username}, Pisa is southwest of the origin cluster with a lime marker and leaning staged tower.`;
+  }
+  if (text.includes('colosseum')) {
+    return `${username}, the Colosseum is south of Munich with an orange marker and a larger amphitheater footprint.`;
+  }
+  if (text.includes('neuschwanstein') || text.includes('castle')) {
+    return `${username}, Neuschwanstein is southeast of Munich with a purple marker and castle towers.`;
   }
   if (text.includes('build')) {
-    return `${username}, public visitors can request builds on the museum page; trusted build jobs run through a controlled queue.`;
+    return `${username}, public visitors can explore in creative mode; curated builds still run through the controlled museum scripts.`;
   }
-  return `${username}, I am ${agent.label}, the ${agent.role}. I can explain my part of the museum build process.`;
+  return `${username}, I am ${agent.label}, the ${agent.role}. Say a landmark name or ask for a tour and I will route you.`;
+}
+
+function chatterLine(agent, lineNumber, agentIndex) {
+  const target = agents[(agentIndex + lineNumber + 1) % agents.length];
+  const waypoint = waypoints[(agentIndex + lineNumber) % waypoints.length];
+  const template = chatterTemplates[lineNumber % chatterTemplates.length];
+  const phrase = template.replace('{place}', waypoint.label);
+  return `${agent.label} -> ${target.label} [${lineNumber + 1}/${CHATTER_LINES_PER_AGENT}]: ${phrase}.`;
+}
+
+function startChatter(bot, agent, index, isActive) {
+  let lineNumber = 0;
+  const sendNext = () => {
+    if (!isActive() || lineNumber >= CHATTER_LINES_PER_AGENT) {
+      return;
+    }
+    bot.chat(chatterLine(agent, lineNumber, index));
+    lineNumber += 1;
+    setTimeout(sendNext, CHATTER_INTERVAL_MS);
+  };
+  setTimeout(sendNext, 3500 + index * 1100);
+}
+
+async function goNear(bot, waypoint) {
+  if (!bot.pathfinder?.goto || !GoalNearXZ) {
+    return;
+  }
+  const movement = bot.pathfinder.goto(new GoalNearXZ(waypoint.x, waypoint.z, 4));
+  const timeout = sleep(MOVEMENT_TIMEOUT_MS).then(() => {
+    throw new Error('movement timeout');
+  });
+  await Promise.race([movement, timeout]);
+}
+
+async function startMovement(bot, agent, index, isActive) {
+  await sleep(5000 + index * 700);
+  let waypointIndex = index % waypoints.length;
+  while (isActive()) {
+    const waypoint = waypoints[waypointIndex % waypoints.length];
+    try {
+      await goNear(bot, waypoint);
+      bot.lookAt(bot.entity.position.offset(0, 0, 1), false);
+    } catch (error) {
+      console.error(`${agent.username} movement`, error.message);
+      if (bot.pathfinder?.stop) {
+        bot.pathfinder.stop();
+      }
+    }
+    waypointIndex += 2;
+    await sleep(MOVEMENT_PAUSE_MS + index * 500);
+  }
 }
 
 function createAgent(agent, index) {
   let reconnectTimer = null;
+  let active = true;
   const bot = mineflayer.createBot({
     host,
     port,
@@ -98,12 +216,23 @@ function createAgent(agent, index) {
     hideErrors: false
   });
 
+  bot.loadPlugin(pathfinder);
+
   bot.once('spawn', async () => {
+    const defaultMove = new Movements(bot);
+    defaultMove.canDig = false;
+    defaultMove.allow1by1towers = false;
+    bot.pathfinder.setMovements(defaultMove);
+
     await sleep(1000 + index * 700);
     const homeY = Math.ceil(bot.entity.position.y);
     bot.chat(`/tp ${agent.username} ${agent.home.x} ${homeY} ${agent.home.z}`);
     await sleep(300);
-    bot.chat(`${agent.label} online: ${agent.role}. Say my name or ask for a tour.`);
+    bot.chat(`${agent.label} online: ${agent.role}. I am patrolling the origin museum cluster.`);
+    startChatter(bot, agent, index, () => active);
+    startMovement(bot, agent, index, () => active).catch((error) => {
+      console.error(`${agent.username} movement loop`, error.message);
+    });
   });
 
   bot.on('chat', async (username, message) => {
@@ -118,6 +247,7 @@ function createAgent(agent, index) {
   });
 
   const reconnect = () => {
+    active = false;
     if (reconnectTimer) {
       return;
     }

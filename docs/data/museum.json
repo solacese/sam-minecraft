@@ -41,8 +41,8 @@
       "description": "A cinematic imported-model build with bots moving around the active layer perimeter."
     },
     {
-      "title": "Architecture Tower",
-      "city": "Museum district",
+      "title": "Leaning Tower of Pisa",
+      "city": "Pisa",
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
@@ -74,33 +74,33 @@
     },
     {
       "name": "Eiffel Tower",
-      "origin": "92, 0",
+      "origin": "145, -5",
       "status": "Seeded exhibit",
-      "description": "Classic landmark build for public tours and agent narration, placed on its local terrain pad."
+      "description": "Classic landmark build for public tours and agent narration, placed east of Munich with a yellow marker."
     },
     {
       "name": "Sydney Opera House",
-      "origin": "-100, 0",
+      "origin": "-145, -5",
       "status": "Seeded exhibit",
-      "description": "Imported OTS model for a cinematic showcase, grounded at its generated terrain location."
+      "description": "Imported OTS model for a cinematic showcase, placed west of Munich with a white marker."
     },
     {
-      "name": "Architecture Tower",
-      "origin": "-58, 66",
+      "name": "Leaning Tower of Pisa",
+      "origin": "-100, 110",
       "status": "Seeded exhibit",
-      "description": "Tall curated exhibit to demonstrate vertical staging in the museum district."
+      "description": "Leaning Tower of Pisa exhibit placed southwest of Munich with a lime marker."
     },
     {
       "name": "Colosseum",
-      "origin": "0, 65",
+      "origin": "0, 125",
       "status": "Seeded exhibit",
-      "description": "Curated landmark for a historical architecture zone."
+      "description": "Curated landmark for a historical architecture zone, placed south of Munich with an orange marker."
     },
     {
       "name": "Neuschwanstein Castle",
-      "origin": "65, 68",
+      "origin": "110, 115",
       "status": "Seeded exhibit",
-      "description": "German landmark exhibit complementing the Munich showcase."
+      "description": "German landmark exhibit complementing the Munich showcase, placed southeast with a purple marker."
     }
   ],
   "agents": [

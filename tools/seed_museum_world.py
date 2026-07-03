@@ -22,18 +22,27 @@ FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
 CLUSTER_CENTER_X = 0
 CLUSTER_CENTER_Z = 0
-CLUSTER_RADIUS = 160
+CLUSTER_RADIUS = 230
 SPAWN_X = 0
-SPAWN_Z = -95
+SPAWN_Z = -175
 
 COMPACT_EXHIBITS = [
     ("munich", 0, 0),
-    ("eiffel", 92, 0),
-    ("sydney", -100, 0),
-    ("architecture", -58, 66),
-    ("colosseum", 0, 65),
-    ("neuschwanstein", 65, 68),
+    ("eiffel", 145, -5),
+    ("sydney", -145, -5),
+    ("architecture", -100, 110),
+    ("colosseum", 0, 125),
+    ("neuschwanstein", 110, 115),
 ]
+
+LANDMARK_MARKERS = {
+    "munich": ("Munich Famous Building", "minecraft:blue_concrete", "minecraft:blue_stained_glass", 0, -48),
+    "eiffel": ("Eiffel Tower", "minecraft:yellow_concrete", "minecraft:yellow_stained_glass", 0, -38),
+    "sydney": ("Sydney Opera House", "minecraft:white_concrete", "minecraft:white_stained_glass", 0, -45),
+    "architecture": ("Leaning Tower of Pisa", "minecraft:lime_concrete", "minecraft:lime_stained_glass", 0, -28),
+    "colosseum": ("Colosseum", "minecraft:orange_concrete", "minecraft:orange_stained_glass", 0, -45),
+    "neuschwanstein": ("Neuschwanstein Castle", "minecraft:purple_concrete", "minecraft:purple_stained_glass", 0, -38),
+}
 
 GRAVITY_REPLACEMENTS = {
     "minecraft:white_concrete_powder": "minecraft:white_concrete",
@@ -322,6 +331,37 @@ def garden_commands(cx: int, cz: int, size: int, base_y: int) -> list[str]:
     return commands
 
 
+def marker_commands(exhibit_centers: dict[str, tuple[int, int]], base_y: int) -> list[str]:
+    commands: list[str] = []
+    surface_y = base_y - 1
+    for exhibit_id, (center_x, center_z) in exhibit_centers.items():
+        title, floor_block, glass_block, offset_x, offset_z = LANDMARK_MARKERS[exhibit_id]
+        marker_x = center_x + offset_x
+        marker_z = center_z + offset_z
+        commands.extend(fill_commands(marker_x - 4, surface_y, marker_z - 4, marker_x + 4, surface_y, marker_z + 4, floor_block))
+        commands.extend(fill_commands(marker_x, base_y, marker_z, marker_x, base_y + 22, marker_z, glass_block))
+        commands.append(f"setblock {marker_x} {base_y + 23} {marker_z} sea_lantern")
+        commands.append(
+            "summon armor_stand "
+            f"{marker_x + 0.5} {base_y + 25} {marker_z + 0.5} "
+            "{Invisible:1b,NoGravity:1b,CustomNameVisible:1b,"
+            f"CustomName:'{{\"text\":\"{title}\",\"color\":\"gold\",\"bold\":true}}'"
+            "}"
+        )
+    return commands
+
+
+def plaza_path_commands(base_y: int) -> list[str]:
+    surface_y = base_y - 1
+    commands: list[str] = []
+    commands.extend(fill_commands(-180, surface_y, -8, 180, surface_y, 8, "polished_andesite"))
+    commands.extend(fill_commands(-8, surface_y, -185, 8, surface_y, 165, "polished_andesite"))
+    commands.extend(fill_commands(-135, surface_y, 100, 135, surface_y, 116, "polished_andesite"))
+    commands.extend(fill_commands(-150, surface_y, -18, -85, surface_y, -2, "polished_andesite"))
+    commands.extend(fill_commands(85, surface_y, -18, 155, surface_y, -2, "polished_andesite"))
+    return commands
+
+
 def paths_and_spawn(spawn_base_y: int) -> list[str]:
     surface_y = spawn_base_y - 1
     commands: list[str] = []
@@ -357,9 +397,11 @@ def main() -> int:
         all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks", *exhibit_centers["sydney"], "Sydney Opera House", base_y_by_exhibit["sydney"]))
     if not args.skip_specs:
         all_commands.extend(seed_spec("eiffel_tower_fr", *exhibit_centers["eiffel"], base_y_by_exhibit["eiffel"]))
-        all_commands.extend(seed_spec("colosseum_it", *exhibit_centers["colosseum"], base_y_by_exhibit["colosseum"], "small"))
-        all_commands.extend(seed_spec("neuschwanstein_castle_de", *exhibit_centers["neuschwanstein"], base_y_by_exhibit["neuschwanstein"], "small"))
-        all_commands.extend(seed_spec("tower_of_pisa_it", *exhibit_centers["architecture"], base_y_by_exhibit["architecture"], "small"))
+        all_commands.extend(seed_spec("colosseum_it", *exhibit_centers["colosseum"], base_y_by_exhibit["colosseum"]))
+        all_commands.extend(seed_spec("neuschwanstein_castle_de", *exhibit_centers["neuschwanstein"], base_y_by_exhibit["neuschwanstein"]))
+        all_commands.extend(seed_spec("tower_of_pisa_it", *exhibit_centers["architecture"], base_y_by_exhibit["architecture"]))
+    all_commands.extend(plaza_path_commands(cluster_base_y))
+    all_commands.extend(marker_commands(exhibit_centers, cluster_base_y))
     all_commands.extend(paths_and_spawn(cluster_base_y))
     all_commands.append("save-all flush")
     run_rcon(all_commands, args.compose_file, args.batch_size)

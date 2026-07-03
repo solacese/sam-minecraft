@@ -6,7 +6,7 @@
 - Always-on Minecraft Java server at `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
 - Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
-- A normal, non-flat baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Architecture Tower, Colosseum, and Neuschwanstein Castle grounded into local terrain.
+- A normal, non-flat baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Leaning Tower of Pisa, Colosseum, and Neuschwanstein Castle grounded into local terrain.
 
 ## Recommended AWS v1 Shape
 
@@ -35,13 +35,13 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 | Landmark | Center |
 |---|---:|
 | Munich Famous Building | `0, 0` |
-| Eiffel Tower | `92, 0` |
-| Sydney Opera House | `-100, 0` |
-| Architecture Tower | `-58, 66` |
-| Colosseum | `0, 65` |
-| Neuschwanstein Castle | `65, 68` |
+| Eiffel Tower | `145, -5` |
+| Sydney Opera House | `-145, -5` |
+| Leaning Tower of Pisa | `-100, 110` |
+| Colosseum | `0, 125` |
+| Neuschwanstein Castle | `110, 115` |
 
-The seed script probes local terrain at the origin, prepares one compact cluster plaza centered on `0, 0`, and places each exhibit close to the others. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
+The seed script probes local terrain at the origin, prepares one readable cluster plaza centered on `0, 0`, places each exhibit close enough to visit quickly, and adds colored markers so non-Munich landmarks are visible from the main route. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
 ## Launch Checklist
 

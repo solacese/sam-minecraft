@@ -22,7 +22,7 @@ The important idea is not just that blocks appear in Minecraft. The demo shows a
 - Munich Famous Building
 - Eiffel Tower
 - Sydney Opera House
-- Architecture Tower
+- Leaning Tower of Pisa
 - Colosseum
 - Neuschwanstein Castle
 
