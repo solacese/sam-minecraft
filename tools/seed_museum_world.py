@@ -20,6 +20,20 @@ MAX_PROBE_Y = 319
 MAX_BUILD_BASE_Y = 88
 FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
+CLUSTER_CENTER_X = 0
+CLUSTER_CENTER_Z = 0
+CLUSTER_RADIUS = 160
+SPAWN_X = 0
+SPAWN_Z = -95
+
+COMPACT_EXHIBITS = [
+    ("munich", 0, 0),
+    ("eiffel", 92, 0),
+    ("sydney", -100, 0),
+    ("architecture", -58, 66),
+    ("colosseum", 0, 65),
+    ("neuschwanstein", 65, 68),
+]
 
 GRAVITY_REPLACEMENTS = {
     "minecraft:white_concrete_powder": "minecraft:white_concrete",
@@ -120,12 +134,17 @@ def fill_commands(x1: int, y1: int, z1: int, x2: int, y2: int, z2: int, block: s
     min_z, max_z = sorted((z1, z2))
     commands: list[str] = []
     for y in range(min_y, max_y + 1):
-        volume = (max_x - min_x + 1) * (max_z - min_z + 1)
-        if volume <= MAX_FILL_VOLUME:
-            commands.append(f"fill {min_x} {y} {min_z} {max_x} {y} {max_z} {block}")
-            continue
-        for z in range(min_z, max_z + 1):
-            commands.append(f"fill {min_x} {y} {z} {max_x} {y} {z} {block}")
+        x = min_x
+        while x <= max_x:
+            chunk_x2 = min(max_x, x + MAX_FILL_VOLUME - 1)
+            chunk_width = chunk_x2 - x + 1
+            max_depth = max(1, MAX_FILL_VOLUME // chunk_width)
+            z = min_z
+            while z <= max_z:
+                chunk_z2 = min(max_z, z + max_depth - 1)
+                commands.append(f"fill {x} {y} {z} {chunk_x2} {y} {chunk_z2} {block}")
+                z = chunk_z2 + 1
+            x = chunk_x2 + 1
     return commands
 
 
@@ -306,9 +325,9 @@ def garden_commands(cx: int, cz: int, size: int, base_y: int) -> list[str]:
 def paths_and_spawn(spawn_base_y: int) -> list[str]:
     surface_y = spawn_base_y - 1
     commands: list[str] = []
-    commands.extend(fill_commands(-18, spawn_base_y - 8, -126, 18, spawn_base_y - 4, -92, "stone"))
-    commands.extend(fill_commands(-18, spawn_base_y - 3, -126, 18, spawn_base_y - 2, -92, "dirt"))
-    commands.extend(fill_commands(-18, surface_y, -126, 18, surface_y, -92, "polished_andesite"))
+    commands.extend(fill_commands(SPAWN_X - 18, spawn_base_y - 8, SPAWN_Z - 18, SPAWN_X + 18, spawn_base_y - 4, SPAWN_Z + 16, "stone"))
+    commands.extend(fill_commands(SPAWN_X - 18, spawn_base_y - 3, SPAWN_Z - 18, SPAWN_X + 18, spawn_base_y - 2, SPAWN_Z + 16, "dirt"))
+    commands.extend(fill_commands(SPAWN_X - 18, surface_y, SPAWN_Z - 18, SPAWN_X + 18, surface_y, SPAWN_Z + 16, "polished_andesite"))
     commands.extend([
         "gamerule doMobSpawning false",
         "gamerule doDaylightCycle false",
@@ -318,9 +337,9 @@ def paths_and_spawn(spawn_base_y: int) -> list[str]:
         "weather clear 1000000",
         "defaultgamemode creative",
         "gamemode creative @a",
-        f"setworldspawn 0 {spawn_base_y} -108",
-        f"spawnpoint @a 0 {spawn_base_y} -108",
-        f"tp @a 0 {spawn_base_y + 1} -112 0 10",
+        f"setworldspawn {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
+        f"spawnpoint @a {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
+        f"tp @a {SPAWN_X} {spawn_base_y + 1} {SPAWN_Z - 4} 0 10",
     ])
     return commands
 
@@ -329,30 +348,19 @@ def main() -> int:
     args = parse_args()
     wait_for_server(args.compose_file)
     all_commands: list[str] = []
-    exhibits = [
-        ("munich", 0, 0, 95),
-        ("eiffel", 220, 0, 80),
-        ("sydney", 0, 220, 85),
-        ("architecture", -220, 0, 80),
-        ("colosseum", 220, 220, 90),
-        ("neuschwanstein", -220, 220, 90),
-    ]
-    base_y_by_exhibit = {
-        exhibit_id: find_site_base_y(center_x, center_z, radius, args.compose_file)
-        for exhibit_id, center_x, center_z, radius in exhibits
-    }
-    spawn_base_y = find_site_base_y(0, -108, 18, args.compose_file)
-    for exhibit_id, center_x, center_z, radius in exhibits:
-        all_commands.extend(prepare_plot(center_x, center_z, radius, base_y_by_exhibit[exhibit_id]))
+    cluster_base_y = find_site_base_y(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, args.compose_file)
+    base_y_by_exhibit = {exhibit_id: cluster_base_y for exhibit_id, _, _ in COMPACT_EXHIBITS}
+    exhibit_centers = {exhibit_id: (center_x, center_z) for exhibit_id, center_x, center_z in COMPACT_EXHIBITS}
+    all_commands.extend(prepare_plot(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, cluster_base_y))
     if not args.skip_ots:
-        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/munich_famous_building.ots_blocks", 0, 0, "Munich Famous Building", base_y_by_exhibit["munich"]))
-        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks", 0, 220, "Sydney Opera House", base_y_by_exhibit["sydney"]))
+        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/munich_famous_building.ots_blocks", *exhibit_centers["munich"], "Munich Famous Building", base_y_by_exhibit["munich"]))
+        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks", *exhibit_centers["sydney"], "Sydney Opera House", base_y_by_exhibit["sydney"]))
     if not args.skip_specs:
-        all_commands.extend(seed_spec("eiffel_tower_fr", 220, 0, base_y_by_exhibit["eiffel"]))
-        all_commands.extend(seed_spec("colosseum_it", 220, 220, base_y_by_exhibit["colosseum"], "small"))
-        all_commands.extend(seed_spec("neuschwanstein_castle_de", -220, 220, base_y_by_exhibit["neuschwanstein"], "small"))
-        all_commands.extend(seed_spec("tower_of_pisa_it", -220, 0, base_y_by_exhibit["architecture"], "small"))
-    all_commands.extend(paths_and_spawn(spawn_base_y))
+        all_commands.extend(seed_spec("eiffel_tower_fr", *exhibit_centers["eiffel"], base_y_by_exhibit["eiffel"]))
+        all_commands.extend(seed_spec("colosseum_it", *exhibit_centers["colosseum"], base_y_by_exhibit["colosseum"], "small"))
+        all_commands.extend(seed_spec("neuschwanstein_castle_de", *exhibit_centers["neuschwanstein"], base_y_by_exhibit["neuschwanstein"], "small"))
+        all_commands.extend(seed_spec("tower_of_pisa_it", *exhibit_centers["architecture"], base_y_by_exhibit["architecture"], "small"))
+    all_commands.extend(paths_and_spawn(cluster_base_y))
     all_commands.append("save-all flush")
     run_rcon(all_commands, args.compose_file, args.batch_size)
     print(f"Seeded museum world with {len(all_commands)} RCON commands.")

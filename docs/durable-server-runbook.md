@@ -35,13 +35,13 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 | Landmark | Center |
 |---|---:|
 | Munich Famous Building | `0, 0` |
-| Eiffel Tower | `220, 0` |
-| Sydney Opera House | `0, 220` |
-| Architecture Tower | `-220, 0` |
-| Colosseum | `220, 220` |
-| Neuschwanstein Castle | `-220, 220` |
+| Eiffel Tower | `92, 0` |
+| Sydney Opera House | `-100, 0` |
+| Architecture Tower | `-58, 66` |
+| Colosseum | `0, 65` |
+| Neuschwanstein Castle | `65, 68` |
 
-The seed script probes local terrain before placing each exhibit. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
+The seed script probes local terrain at the origin, prepares one compact cluster plaza centered on `0, 0`, and places each exhibit close to the others. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
 ## Launch Checklist
 

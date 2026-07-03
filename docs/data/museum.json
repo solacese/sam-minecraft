@@ -74,31 +74,31 @@
     },
     {
       "name": "Eiffel Tower",
-      "origin": "220, 0",
+      "origin": "92, 0",
       "status": "Seeded exhibit",
       "description": "Classic landmark build for public tours and agent narration, placed on its local terrain pad."
     },
     {
       "name": "Sydney Opera House",
-      "origin": "0, 220",
+      "origin": "-100, 0",
       "status": "Seeded exhibit",
       "description": "Imported OTS model for a cinematic showcase, grounded at its generated terrain location."
     },
     {
       "name": "Architecture Tower",
-      "origin": "-220, 0",
+      "origin": "-58, 66",
       "status": "Seeded exhibit",
       "description": "Tall curated exhibit to demonstrate vertical staging in the museum district."
     },
     {
       "name": "Colosseum",
-      "origin": "220, 220",
+      "origin": "0, 65",
       "status": "Seeded exhibit",
       "description": "Curated landmark for a historical architecture zone."
     },
     {
       "name": "Neuschwanstein Castle",
-      "origin": "-220, 220",
+      "origin": "65, 68",
       "status": "Seeded exhibit",
       "description": "German landmark exhibit complementing the Munich showcase."
     }
