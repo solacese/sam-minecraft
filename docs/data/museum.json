@@ -1,0 +1,138 @@
+{
+  "urls": {
+    "museum": "https://solacese.github.io/sam-minecraft/",
+    "museumLabel": "solacese.github.io/sam-minecraft",
+    "chat": "https://chat.example.com",
+    "chatLabel": "chat.example.com"
+  },
+  "minecraft": {
+    "host": "mc.example.com",
+    "port": "25565",
+    "note": "Replace mc.example.com and chat.example.com after the durable AWS server is live."
+  },
+  "request": {
+    "apiEndpoint": "",
+    "githubIssueUrl": "https://github.com/solacese/sam-minecraft/issues/new?template=museum-request.yml",
+    "issueLabels": "museum-request"
+  },
+  "recordings": [
+    {
+      "title": "Munich Famous Building",
+      "city": "Munich",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A one-shot OTS structure build with visible agent coordination and a centralized trusted builder."
+    },
+    {
+      "title": "Eiffel Tower",
+      "city": "Paris",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A landmark build showing structural planning, staged placement, and progress reporting."
+    },
+    {
+      "title": "Sydney Opera House",
+      "city": "Sydney",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A cinematic imported-model build with bots moving around the active layer perimeter."
+    },
+    {
+      "title": "Architecture Tower",
+      "city": "Museum district",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A vertical OTS model staged as a public museum exhibit."
+    },
+    {
+      "title": "Colosseum",
+      "city": "Rome",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A large cultural landmark used to demonstrate multi-agent task decomposition."
+    },
+    {
+      "title": "Neuschwanstein Castle",
+      "city": "Bavaria",
+      "duration": "TBD",
+      "youtubeUrl": "",
+      "thumbnailUrl": "",
+      "description": "A museum-ready castle exhibit showing how agents coordinate site, structure, and finishing."
+    }
+  ],
+  "landmarks": [
+    {
+      "name": "Munich Famous Building",
+      "origin": "0, 0",
+      "status": "Flagship filming build",
+      "description": "Exact OTS structure placement near spawn for the main recorded demo."
+    },
+    {
+      "name": "Eiffel Tower",
+      "origin": "220, 0",
+      "status": "Planned exhibit",
+      "description": "Classic landmark build for public tours and agent narration."
+    },
+    {
+      "name": "Sydney Opera House",
+      "origin": "0, 220",
+      "status": "Planned exhibit",
+      "description": "Imported OTS model for a cinematic waterfront-style showcase."
+    },
+    {
+      "name": "Architecture Tower",
+      "origin": "-220, 0",
+      "status": "Planned exhibit",
+      "description": "Tall local OTS model to demonstrate vertical staging."
+    },
+    {
+      "name": "Colosseum",
+      "origin": "220, 220",
+      "status": "Planned exhibit",
+      "description": "Curated landmark for a historical architecture zone."
+    },
+    {
+      "name": "Neuschwanstein Castle",
+      "origin": "-220, 220",
+      "status": "Planned exhibit",
+      "description": "German landmark exhibit complementing the Munich showcase."
+    }
+  ],
+  "agents": [
+    {
+      "name": "OpenAI Orchestrator",
+      "role": "Mission control",
+      "activity": "Routes user requests, coordinates agents, and controls trusted build execution."
+    },
+    {
+      "name": "Design Dora",
+      "role": "Site planner",
+      "activity": "Reviews site layout, paths, plaza framing, and visitor flow."
+    },
+    {
+      "name": "Build Bea",
+      "role": "Structure specialist",
+      "activity": "Monitors staging, lower layers, framing, walls, and roofs."
+    },
+    {
+      "name": "Monument Marc",
+      "role": "Landmark fidelity",
+      "activity": "Checks imported landmark silhouette, masonry, and recognizable details."
+    },
+    {
+      "name": "Supply Sid",
+      "role": "Materials and finish",
+      "activity": "Tracks palette, utilities, glazing, and final detail passes."
+    },
+    {
+      "name": "Forest Finn",
+      "role": "Landscape",
+      "activity": "Plans exterior paths, garden edges, greenery, and cleanup."
+    }
+  ]
+}

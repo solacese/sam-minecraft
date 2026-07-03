@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="SAM Minecraft Museum: multi-agent AI teams coordinating to build complex structures in Minecraft.">
+    <title>SAM Minecraft Museum</title>
+    <link rel="stylesheet" href="assets/museum.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="SAM Minecraft Museum home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>SAM Minecraft Museum</span>
+      </a>
+      <nav class="nav" aria-label="Museum navigation">
+        <a href="#recordings">Recordings</a>
+        <a href="#visit">Visit</a>
+        <a href="#agents">Agents</a>
+        <a href="#request">Request</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="museum-dashboard" aria-labelledby="museum-title">
+        <div class="intro">
+          <p class="eyebrow">Live Minecraft world + AI agent showcase</p>
+          <h1 id="museum-title">Complex landmarks built by coordinating AI agents</h1>
+          <p class="lede">
+            Watch curated build recordings, join the persistent museum server, and request new
+            structures for the agent team to stage.
+          </p>
+          <div class="actions">
+            <a class="button primary" href="#recordings">Watch recordings</a>
+            <a class="button" href="#visit">Join the server</a>
+          </div>
+        </div>
+
+        <aside class="status-panel" aria-label="Museum access details">
+          <div class="status-row">
+            <span>Web museum</span>
+            <a id="museum-address" href="#" rel="noreferrer">Loading...</a>
+          </div>
+          <div class="status-row">
+            <span>Minecraft server</span>
+            <button id="copy-server" class="copy-button" type="button">Loading...</button>
+          </div>
+          <div class="status-row">
+            <span>Agent chat</span>
+            <a id="chat-address" href="#" rel="noreferrer">Loading...</a>
+          </div>
+          <div class="status-note" id="server-note">Server details load from data/museum.json.</div>
+        </aside>
+      </section>
+
+      <section id="recordings" class="section" aria-labelledby="recordings-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Film room</p>
+            <h2 id="recordings-title">Featured build recordings</h2>
+          </div>
+          <p>Replace the placeholder URLs in <code>docs/data/museum.json</code> with six public YouTube links.</p>
+        </div>
+        <div id="recording-grid" class="recording-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="visit" class="section split" aria-labelledby="visit-title">
+        <div>
+          <p class="eyebrow">Live museum</p>
+          <h2 id="visit-title">Join the durable Minecraft world</h2>
+          <p>
+            The hosted world is a curated landmark museum. Visitors can tour the structures, watch
+            agents in chat, and submit requests. Public agents are read-only by default; trusted
+            build jobs run through a queue.
+          </p>
+        </div>
+        <div class="visit-card">
+          <dl>
+            <div>
+              <dt>Edition</dt>
+              <dd>Minecraft Java Edition 1.21.4</dd>
+            </div>
+            <div>
+              <dt>Server</dt>
+              <dd><code id="server-address-inline">Loading...</code></dd>
+            </div>
+            <div>
+              <dt>Mode</dt>
+              <dd>Creative museum, peaceful, guided tours</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="landmarks-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Museum map</p>
+            <h2 id="landmarks-title">Planned landmark collection</h2>
+          </div>
+        </div>
+        <div id="landmark-grid" class="landmark-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="agents" class="section" aria-labelledby="agents-title">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Activity tab</p>
+            <h2 id="agents-title">How the agents coordinate</h2>
+          </div>
+          <p>
+            The orchestrator splits planning, site review, materials, structure, detailing, and
+            landscaping into visible agent tasks before a trusted builder mutates the world.
+          </p>
+        </div>
+        <div id="agent-grid" class="agent-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="request" class="section request-section" aria-labelledby="request-title">
+        <div>
+          <p class="eyebrow">Request queue</p>
+          <h2 id="request-title">Request a new model or landmark</h2>
+          <p>
+            Public requests are queued for review. Curated templates can be approved for live
+            builds; free-form model ideas become candidates for future museum recordings.
+          </p>
+        </div>
+        <form id="request-form" class="request-form">
+          <label>
+            Your name or team
+            <input name="requester" autocomplete="name" placeholder="Optional">
+          </label>
+          <label>
+            Landmark or model
+            <input name="title" required placeholder="Example: Frauenkirche, Munich">
+          </label>
+          <label>
+            What should the agents build or explain?
+            <textarea name="description" rows="5" required placeholder="Describe the structure, style, location, and any recording goal."></textarea>
+          </label>
+          <button class="button primary" type="submit">Create request</button>
+          <p id="request-result" class="form-result" role="status"></p>
+        </form>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>SAM Minecraft Museum</span>
+      <a href="sharepoint-one-pager.md">SharePoint one-pager</a>
+      <a href="durable-server-runbook.md">Server runbook</a>
+    </footer>
+
+    <script src="assets/museum.js" type="module"></script>
+  </body>
+</html>

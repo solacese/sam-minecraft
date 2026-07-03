@@ -9,6 +9,7 @@ __pycache__/
 # Node.js
 node_modules/
 vendor/minecraft-mcp-server/node_modules/
+vendor/minecraft-mcp-server/node_modules.broken.*/
 vendor/minecraft-mcp-server/dist/
 
 # Runtime databases and logs

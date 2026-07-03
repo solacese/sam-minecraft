@@ -1,0 +1,41 @@
+name: Museum model request
+description: Request a new landmark, model, or recording for the SAM Minecraft Museum.
+title: "Museum request: "
+labels:
+  - museum-request
+body:
+  - type: input
+    id: requester
+    attributes:
+      label: Requester
+      description: Your name, team, or organization.
+      placeholder: Optional
+    validations:
+      required: false
+  - type: input
+    id: landmark
+    attributes:
+      label: Landmark or model
+      description: Name the structure you want the agents to build, explain, or record.
+      placeholder: Frauenkirche, Munich
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Request details
+      description: Include style, city, source links, desired size, and whether this should become a recording.
+      placeholder: Describe the structure, source material, and recording goal.
+    validations:
+      required: true
+  - type: dropdown
+    id: request-type
+    attributes:
+      label: Request type
+      options:
+        - Curated museum build
+        - Recording idea
+        - New OTS/model import
+        - Guided tour/script idea
+    validations:
+      required: true
