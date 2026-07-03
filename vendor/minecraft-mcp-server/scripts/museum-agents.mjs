@@ -9,12 +9,12 @@ const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 
 const waypoints = [
   { label: 'spawn overlook', x: 0, z: -210 },
-  { label: 'Sydney Opera House west display', x: -170, z: -52 },
-  { label: 'Leaning Tower of Pisa west-center display', x: -95, z: -52 },
+  { label: 'Sydney Opera House west display', x: -200, z: -52 },
+  { label: 'Arc de Triomphe west-center display', x: -100, z: -52 },
   { label: 'Munich origin display', x: 8, z: -52 },
-  { label: 'Eiffel Tower east-center display', x: 105, z: -52 },
-  { label: 'Colosseum east display', x: 170, z: -52 },
-  { label: 'Neuschwanstein far-east display', x: 245, z: -52 }
+  { label: 'Eiffel Tower east-center display', x: 95, z: -52 },
+  { label: "Saint Basil's Cathedral east display", x: 175, z: -52 },
+  { label: 'NY Chrysler Building far-east display', x: 255, z: -52 }
 ];
 
 const agents = [
@@ -48,7 +48,7 @@ const agents = [
     role: 'landmark fidelity specialist',
     home: { x: 0, z: -210 },
     aliases: ['marc', 'monument'],
-    topics: ['munich', 'eiffel', 'sydney', 'pisa', 'colosseum', 'neuschwanstein', 'landmark', 'silhouette']
+    topics: ['munich', 'eiffel', 'sydney', 'arc', 'triumph', 'basil', 'cathedral', 'chrysler', 'landmark', 'silhouette']
   },
   {
     username: 'SupplySid_l31',
@@ -118,7 +118,7 @@ function shouldRespond(agent, message) {
 function responseFor(agent, username, message) {
   const text = normalize(message);
   if (text.includes('tour') || text.includes('where')) {
-    return `${username}, look south from the glass overlook: Sydney, Pisa, Munich, Eiffel, Colosseum, and Neuschwanstein are arranged left to right in one visible row.`;
+    return `${username}, look south from the glass overlook: Sydney, Arc de Triomphe, Munich, Eiffel, Saint Basil's, and Chrysler are arranged left to right in one close OTS model row.`;
   }
   if (text.includes('agents') || text.includes('help') || text.includes('team')) {
     return `${username}, we are six guide agents. We answer chat, patrol waypoints, and post coordination updates while the museum stays in creative mode.`;
@@ -130,19 +130,22 @@ function responseFor(agent, username, message) {
     return `${username}, Munich is the large OTS flagship at the origin, centered in the visible row.`;
   }
   if (text.includes('eiffel')) {
-    return `${username}, Eiffel is just right of Munich in the front row, with a yellow marker and full-height tower profile.`;
+    return `${username}, Eiffel is just right of Munich and uses the prebuilt GrabCraft Eiffel Tower model, with a yellow marker and full-height tower profile.`;
   }
   if (text.includes('sydney')) {
     return `${username}, Sydney is far left in the visible row, with a white marker and imported Opera House model.`;
   }
-  if (text.includes('pisa') || text.includes('architecture')) {
-    return `${username}, Pisa is left of Munich in the visible row, with a lime marker and leaning staged tower.`;
+  if (text.includes('arc') || text.includes('triumph')) {
+    return `${username}, Arc de Triomphe is left of Munich and uses a high-detail GrabCraft OTS conversion with an orange marker.`;
   }
-  if (text.includes('colosseum')) {
-    return `${username}, the Colosseum is right of Eiffel in the visible row, with an orange marker and larger amphitheater footprint.`;
+  if (text.includes('basil') || text.includes('cathedral')) {
+    return `${username}, Saint Basil's is right of Eiffel and uses the colorful GrabCraft cathedral model with a red marker.`;
   }
-  if (text.includes('neuschwanstein') || text.includes('castle')) {
-    return `${username}, Neuschwanstein is far right in the visible row, with a purple marker and castle towers.`;
+  if (text.includes('chrysler') || text.includes('skyscraper')) {
+    return `${username}, the NY Chrysler Building is far right in the visible row, a tall converted GrabCraft skyline model with a light blue marker.`;
+  }
+  if (text.includes('pisa') || text.includes('colosseum') || text.includes('neuschwanstein')) {
+    return `${username}, those draft placeholders were replaced. This museum row now uses six high-quality OTS-backed models only.`;
   }
   if (text.includes('build')) {
     return `${username}, public visitors can explore in creative mode; curated builds still run through the controlled museum scripts.`;

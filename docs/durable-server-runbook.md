@@ -6,7 +6,7 @@
 - Always-on Minecraft Java server at `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
 - Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
-- A normal, non-flat baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Leaning Tower of Pisa, Colosseum, and Neuschwanstein Castle grounded into local terrain.
+- A normal, non-flat baseline museum world with six close, high-quality OTS-backed exhibits: Sydney Opera House, Arc de Triomphe, Munich Famous Building, Eiffel Tower, Saint Basil's Cathedral, and NY Chrysler Building.
 
 ## Recommended AWS v1 Shape
 
@@ -34,14 +34,14 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 
 | Landmark | Center |
 |---|---:|
-| Sydney Opera House | `-170, 0` |
-| Leaning Tower of Pisa | `-95, 0` |
+| Sydney Opera House | `-200, 0` |
+| Arc de Triomphe | `-100, 0` |
 | Munich Famous Building | `0, 0` |
-| Eiffel Tower | `105, 0` |
-| Colosseum | `170, 0` |
-| Neuschwanstein Castle | `245, 0` |
+| Eiffel Tower | `95, 0` |
+| Saint Basil's Cathedral | `175, 0` |
+| NY Chrysler Building | `255, 0` |
 
-The seed script probes local terrain at the origin, prepares one front-facing row centered on `0, 0`, places the exhibits left-to-right in front of an elevated glass overlook, and adds colored markers so non-Munich landmarks are visible immediately. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
+The seed script probes local terrain at the origin, prepares one front-facing row centered on `0, 0`, places six prebuilt `.ots_blocks` models left-to-right in front of an elevated glass overlook, and adds colored markers so every exhibit is visible immediately. The museum seed must not use raw draft landmark specs. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
 ## Launch Checklist
 

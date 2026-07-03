@@ -22,27 +22,36 @@ FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
 CLUSTER_CENTER_X = 0
 CLUSTER_CENTER_Z = 0
-CLUSTER_RADIUS = 300
+CLUSTER_RADIUS = 330
 SPAWN_X = 0
 SPAWN_Z = -245
 SPAWN_OVERLOOK_Y_OFFSET = 52
 
 COMPACT_EXHIBITS = [
-    ("sydney", -170, 0),
-    ("architecture", -95, 0),
+    ("sydney", -200, 0),
+    ("arc", -100, 0),
     ("munich", 0, 0),
-    ("eiffel", 105, 0),
-    ("colosseum", 170, 0),
-    ("neuschwanstein", 245, 0),
+    ("eiffel", 95, 0),
+    ("saint_basil", 175, 0),
+    ("chrysler", 255, 0),
 ]
 
 LANDMARK_MARKERS = {
     "munich": ("Munich Famous Building", "minecraft:blue_concrete", "minecraft:blue_stained_glass", 0, -48),
     "eiffel": ("Eiffel Tower", "minecraft:yellow_concrete", "minecraft:yellow_stained_glass", 0, -38),
     "sydney": ("Sydney Opera House", "minecraft:white_concrete", "minecraft:white_stained_glass", 0, -45),
-    "architecture": ("Leaning Tower of Pisa", "minecraft:lime_concrete", "minecraft:lime_stained_glass", 0, -28),
-    "colosseum": ("Colosseum", "minecraft:orange_concrete", "minecraft:orange_stained_glass", 0, -45),
-    "neuschwanstein": ("Neuschwanstein Castle", "minecraft:purple_concrete", "minecraft:purple_stained_glass", 0, -38),
+    "arc": ("Arc de Triomphe", "minecraft:orange_concrete", "minecraft:orange_stained_glass", 0, -35),
+    "saint_basil": ("Saint Basil's Cathedral", "minecraft:red_concrete", "minecraft:red_stained_glass", 0, -45),
+    "chrysler": ("NY Chrysler Building", "minecraft:light_blue_concrete", "minecraft:light_blue_stained_glass", 0, -38),
+}
+
+OTS_EXHIBITS = {
+    "munich": ("Munich Famous Building", "vendor/minecraft-mcp-server/local_structures/munich_famous_building.ots_blocks"),
+    "sydney": ("Sydney Opera House", "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks"),
+    "arc": ("Arc de Triomphe", "vendor/minecraft-mcp-server/local_structures/arc_de_triomphe_grabcraft.ots_blocks"),
+    "eiffel": ("Eiffel Tower, Paris", "vendor/minecraft-mcp-server/local_structures/eiffel_tower_paris_grabcraft.ots_blocks"),
+    "saint_basil": ("Saint Basil's Cathedral, Moscow", "vendor/minecraft-mcp-server/local_structures/saint_basils_cathedral_moscow_grabcraft.ots_blocks"),
+    "chrysler": ("NY Chrysler Building", "vendor/minecraft-mcp-server/local_structures/ny_chrysler_building_grabcraft.ots_blocks"),
 }
 
 GUIDE_AGENTS = [
@@ -264,6 +273,13 @@ def place_ots(path: pathlib.Path, center_x: int, center_z: int, title: str, base
     return commands
 
 
+def ots_height(path: pathlib.Path) -> int:
+    blocks = [block for block in load_ots_blocks(path) if block.state != "minecraft:air"]
+    if not blocks:
+        return 0
+    return max(block.y for block in blocks) - min(block.y for block in blocks) + 1
+
+
 def commands_for_runs(blocks: list[Block]) -> list[str]:
     commands: list[str] = []
     grouped: dict[tuple[int, int, str], list[int]] = defaultdict(list)
@@ -357,14 +373,14 @@ def marker_commands(exhibit_centers: dict[str, tuple[int, int]], base_y: int) ->
 def plaza_path_commands(base_y: int) -> list[str]:
     surface_y = base_y - 1
     commands: list[str] = []
-    commands.extend(fill_commands(-230, surface_y, -12, 285, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(-250, surface_y, -12, 295, surface_y, 12, "polished_andesite"))
     commands.extend(fill_commands(-8, surface_y, -245, 8, surface_y, 45, "polished_andesite"))
-    commands.extend(fill_commands(-235, surface_y, -62, 285, surface_y, -46, "polished_andesite"))
-    commands.extend(fill_commands(-178, surface_y, -62, -162, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(-103, surface_y, -62, -87, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(97, surface_y, -62, 113, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(162, surface_y, -62, 178, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(237, surface_y, -62, 253, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(-250, surface_y, -62, 295, surface_y, -46, "polished_andesite"))
+    commands.extend(fill_commands(-208, surface_y, -62, -192, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(-108, surface_y, -62, -92, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(87, surface_y, -62, 103, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(167, surface_y, -62, 183, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(247, surface_y, -62, 263, surface_y, 12, "polished_andesite"))
     return commands
 
 
@@ -400,15 +416,18 @@ def main() -> int:
     cluster_base_y = find_site_base_y(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, args.compose_file)
     base_y_by_exhibit = {exhibit_id: cluster_base_y for exhibit_id, _, _ in COMPACT_EXHIBITS}
     exhibit_centers = {exhibit_id: (center_x, center_z) for exhibit_id, center_x, center_z in COMPACT_EXHIBITS}
-    all_commands.extend(prepare_plot(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, cluster_base_y))
+    max_model_height = 0
     if not args.skip_ots:
-        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/munich_famous_building.ots_blocks", *exhibit_centers["munich"], "Munich Famous Building", base_y_by_exhibit["munich"]))
-        all_commands.extend(place_ots(REPO_ROOT / "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks", *exhibit_centers["sydney"], "Sydney Opera House", base_y_by_exhibit["sydney"]))
-    if not args.skip_specs:
-        all_commands.extend(seed_spec("eiffel_tower_fr", *exhibit_centers["eiffel"], base_y_by_exhibit["eiffel"]))
-        all_commands.extend(seed_spec("colosseum_it", *exhibit_centers["colosseum"], base_y_by_exhibit["colosseum"]))
-        all_commands.extend(seed_spec("neuschwanstein_castle_de", *exhibit_centers["neuschwanstein"], base_y_by_exhibit["neuschwanstein"]))
-        all_commands.extend(seed_spec("tower_of_pisa_it", *exhibit_centers["architecture"], base_y_by_exhibit["architecture"]))
+        max_model_height = max(
+            ots_height(REPO_ROOT / OTS_EXHIBITS[exhibit_id][1])
+            for exhibit_id, _, _ in COMPACT_EXHIBITS
+        )
+    clear_top_y = min(MAX_PROBE_Y, cluster_base_y + max(180, max_model_height + 16))
+    all_commands.extend(prepare_plot(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, cluster_base_y, clear_top_y))
+    if not args.skip_ots:
+        for exhibit_id, center_x, center_z in COMPACT_EXHIBITS:
+            title, relative_path = OTS_EXHIBITS[exhibit_id]
+            all_commands.extend(place_ots(REPO_ROOT / relative_path, center_x, center_z, title, base_y_by_exhibit[exhibit_id]))
     all_commands.extend(plaza_path_commands(cluster_base_y))
     all_commands.extend(marker_commands(exhibit_centers, cluster_base_y))
     all_commands.extend(paths_and_spawn(cluster_base_y))

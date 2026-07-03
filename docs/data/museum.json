@@ -41,28 +41,28 @@
       "description": "A cinematic imported-model build with bots moving around the active layer perimeter."
     },
     {
-      "title": "Leaning Tower of Pisa",
-      "city": "Pisa",
+      "title": "Arc de Triomphe",
+      "city": "Paris",
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A vertical OTS model staged as a public museum exhibit."
+      "description": "A high-detail prebuilt GrabCraft model converted into OTS blocks for the public museum."
     },
     {
-      "title": "Colosseum",
-      "city": "Rome",
+      "title": "Saint Basil's Cathedral",
+      "city": "Moscow",
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A large cultural landmark used to demonstrate multi-agent task decomposition."
+      "description": "A colorful high-detail GrabCraft model converted into OTS blocks for visual contrast."
     },
     {
-      "title": "Neuschwanstein Castle",
-      "city": "Bavaria",
+      "title": "NY Chrysler Building",
+      "city": "New York",
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A museum-ready castle exhibit showing how agents coordinate site, structure, and finishing."
+      "description": "A tall skyline model converted from a prebuilt GrabCraft structure into OTS blocks."
     }
   ],
   "landmarks": [
@@ -74,33 +74,33 @@
     },
     {
       "name": "Eiffel Tower",
-      "origin": "105, 0",
+      "origin": "95, 0",
       "status": "Seeded exhibit",
-      "description": "Classic landmark build in the visible front row, just right of Munich with a yellow marker."
+      "description": "High-detail prebuilt GrabCraft Eiffel model converted into OTS blocks, just right of Munich with a yellow marker."
     },
     {
       "name": "Sydney Opera House",
-      "origin": "-170, 0",
+      "origin": "-200, 0",
       "status": "Seeded exhibit",
       "description": "Imported OTS model in the visible front row, far left with a white marker."
     },
     {
-      "name": "Leaning Tower of Pisa",
-      "origin": "-95, 0",
+      "name": "Arc de Triomphe",
+      "origin": "-100, 0",
       "status": "Seeded exhibit",
-      "description": "Leaning Tower of Pisa exhibit in the visible front row, left of Munich with a lime marker."
+      "description": "High-detail prebuilt GrabCraft model converted into OTS blocks, left of Munich with an orange marker."
     },
     {
-      "name": "Colosseum",
-      "origin": "170, 0",
+      "name": "Saint Basil's Cathedral",
+      "origin": "175, 0",
       "status": "Seeded exhibit",
-      "description": "Curated landmark in the visible front row, right of Eiffel with an orange marker."
+      "description": "Colorful prebuilt GrabCraft cathedral model converted into OTS blocks, right of Eiffel with a red marker."
     },
     {
-      "name": "Neuschwanstein Castle",
-      "origin": "245, 0",
+      "name": "NY Chrysler Building",
+      "origin": "255, 0",
       "status": "Seeded exhibit",
-      "description": "German landmark in the visible front row, far right with a purple marker."
+      "description": "Tall prebuilt GrabCraft skyscraper model converted into OTS blocks, far right with a light blue marker."
     }
   ],
   "agents": [
