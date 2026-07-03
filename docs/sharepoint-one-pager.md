@@ -4,7 +4,7 @@
 
 | Resource | Address |
 |---|---|
-| Museum website | `https://solacese.github.io/sam-minecraft/` |
+| Museum website | `https://raphael-solace.github.io/sam-minecraft-museum/` |
 | Agent chat | In-game on the Minecraft server |
 | Minecraft Java server | `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565` |
 | Request a new model | Use the request form on the museum website |

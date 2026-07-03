@@ -1,8 +1,8 @@
 {
   "urls": {
-    "museum": "https://solacese.github.io/sam-minecraft/",
-    "museumLabel": "solacese.github.io/sam-minecraft",
-    "chat": "https://solacese.github.io/sam-minecraft/#agents",
+    "museum": "https://raphael-solace.github.io/sam-minecraft-museum/",
+    "museumLabel": "raphael-solace.github.io/sam-minecraft-museum",
+    "chat": "https://raphael-solace.github.io/sam-minecraft-museum/#agents",
     "chatLabel": "In-game guide agents"
   },
   "minecraft": {
