@@ -142,6 +142,16 @@ def rcon_lines(stdout: str) -> list[str]:
     return lines
 
 
+def with_forceload(x1: int, z1: int, x2: int, z2: int, commands: list[str]) -> list[str]:
+    if not commands:
+        return []
+    return [
+        f"forceload add {x1} {z1} {x2} {z2}",
+        *commands,
+        f"forceload remove {x1} {z1} {x2} {z2}",
+    ]
+
+
 def wait_for_server(compose_file: str) -> None:
     for _ in range(90):
         completed = subprocess.run(
@@ -182,7 +192,11 @@ def ground_probe_command(x: int, y: int, z: int) -> str:
 
 def find_ground_y(x: int, z: int, compose_file: str) -> int:
     probe_ys = list(range(MAX_PROBE_Y, MIN_WORLD_Y - 1, -1))
-    stdout = rcon_capture([ground_probe_command(x, y, z) for y in probe_ys], compose_file)
+    rcon_capture([f"forceload add {x} {z} {x} {z}"], compose_file)
+    try:
+        stdout = rcon_capture([ground_probe_command(x, y, z) for y in probe_ys], compose_file)
+    finally:
+        rcon_capture([f"forceload remove {x} {z} {x} {z}"], compose_file)
     for y, line in zip(probe_ys, rcon_lines(stdout)):
         if "Test failed" in line:
             return y
@@ -191,10 +205,6 @@ def find_ground_y(x: int, z: int, compose_file: str) -> int:
 
 
 def find_site_base_y(center_x: int, center_z: int, radius: int, compose_file: str) -> int:
-    x1, x2 = center_x - radius, center_x + radius
-    z1, z2 = center_z - radius, center_z + radius
-    rcon_capture([f"forceload add {x1} {z1} {x2} {z2}"], compose_file)
-    time.sleep(1)
     offset = max(12, min(32, radius // 3))
     samples = [
         (center_x, center_z),
@@ -218,14 +228,13 @@ def prepare_plot(center_x: int, center_z: int, radius: int, base_y: int, top_y: 
     surface_y = base_y - 1
     clear_top_y = top_y if top_y is not None else min(319, base_y + 180)
     foundation_bottom_y = max(MIN_WORLD_Y, base_y - FOUNDATION_DEPTH)
-    commands = [f"forceload add {x1} {z1} {x2} {z2}"]
+    commands: list[str] = []
     for y in range(base_y, clear_top_y + 1):
         commands.extend(fill_commands(x1, y, z1, x2, y, z2, "air"))
     commands.extend(fill_commands(x1, foundation_bottom_y, z1, x2, base_y - 4, z2, "stone"))
     commands.extend(fill_commands(x1, base_y - 3, z1, x2, base_y - 2, z2, "dirt"))
     commands.extend(fill_commands(x1, surface_y, z1, x2, surface_y, z2, "grass_block"))
-    commands.append(f"forceload remove {x1} {z1} {x2} {z2}")
-    return commands
+    return with_forceload(x1, z1, x2, z2, commands)
 
 
 def load_ots_blocks(path: pathlib.Path) -> list[Block]:
@@ -268,9 +277,13 @@ def place_ots(path: pathlib.Path, center_x: int, center_z: int, title: str, base
         for b in blocks
         if b.state != "minecraft:air"
     ]
+    world_min_x = min(block.x for block in world_blocks)
+    world_max_x = max(block.x for block in world_blocks)
+    world_min_z = min(block.z for block in world_blocks)
+    world_max_z = max(block.z for block in world_blocks)
     commands = [f"say Seeding {title} with {len(world_blocks)} blocks"]
     commands.extend(commands_for_runs(world_blocks))
-    return commands
+    return with_forceload(world_min_x, world_min_z, world_max_x, world_max_z, commands)
 
 
 def ots_height(path: pathlib.Path) -> int:
@@ -278,6 +291,15 @@ def ots_height(path: pathlib.Path) -> int:
     if not blocks:
         return 0
     return max(block.y for block in blocks) - min(block.y for block in blocks) + 1
+
+
+def ots_footprint(path: pathlib.Path) -> tuple[int, int]:
+    blocks = [block for block in load_ots_blocks(path) if block.state != "minecraft:air"]
+    if not blocks:
+        return (1, 1)
+    width = max(block.x for block in blocks) - min(block.x for block in blocks) + 1
+    depth = max(block.z for block in blocks) - min(block.z for block in blocks) + 1
+    return (width, depth)
 
 
 def commands_for_runs(blocks: list[Block]) -> list[str]:
@@ -364,34 +386,45 @@ def marker_commands(exhibit_centers: dict[str, tuple[int, int]], base_y: int) ->
         title, floor_block, glass_block, offset_x, offset_z = LANDMARK_MARKERS[exhibit_id]
         marker_x = center_x + offset_x
         marker_z = center_z + offset_z
-        commands.extend(fill_commands(marker_x - 4, surface_y, marker_z - 4, marker_x + 4, surface_y, marker_z + 4, floor_block))
-        commands.extend(fill_commands(marker_x, base_y, marker_z, marker_x, base_y + 22, marker_z, glass_block))
-        commands.append(f"setblock {marker_x} {base_y + 23} {marker_z} sea_lantern")
+        marker_body: list[str] = []
+        marker_body.extend(fill_commands(marker_x - 4, surface_y, marker_z - 4, marker_x + 4, surface_y, marker_z + 4, floor_block))
+        marker_body.extend(fill_commands(marker_x, base_y, marker_z, marker_x, base_y + 22, marker_z, glass_block))
+        marker_body.append(f"setblock {marker_x} {base_y + 23} {marker_z} sea_lantern")
+        commands.extend(with_forceload(marker_x - 4, marker_z - 4, marker_x + 4, marker_z + 4, marker_body))
     return commands
 
 
 def plaza_path_commands(base_y: int) -> list[str]:
     surface_y = base_y - 1
     commands: list[str] = []
-    commands.extend(fill_commands(-250, surface_y, -12, 295, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(-8, surface_y, -245, 8, surface_y, 45, "polished_andesite"))
-    commands.extend(fill_commands(-250, surface_y, -62, 295, surface_y, -46, "polished_andesite"))
-    commands.extend(fill_commands(-208, surface_y, -62, -192, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(-108, surface_y, -62, -92, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(87, surface_y, -62, 103, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(167, surface_y, -62, 183, surface_y, 12, "polished_andesite"))
-    commands.extend(fill_commands(247, surface_y, -62, 263, surface_y, 12, "polished_andesite"))
+    row_body: list[str] = []
+    row_body.extend(fill_commands(-250, base_y, -62, 295, base_y + 12, 12, "air"))
+    row_body.extend(fill_commands(-250, surface_y, -12, 295, surface_y, 12, "polished_andesite"))
+    row_body.extend(fill_commands(-250, surface_y, -62, 295, surface_y, -46, "polished_andesite"))
+    row_body.extend(fill_commands(-208, surface_y, -62, -192, surface_y, 12, "polished_andesite"))
+    row_body.extend(fill_commands(-108, surface_y, -62, -92, surface_y, 12, "polished_andesite"))
+    row_body.extend(fill_commands(87, surface_y, -62, 103, surface_y, 12, "polished_andesite"))
+    row_body.extend(fill_commands(167, surface_y, -62, 183, surface_y, 12, "polished_andesite"))
+    row_body.extend(fill_commands(247, surface_y, -62, 263, surface_y, 12, "polished_andesite"))
+    commands.extend(with_forceload(-250, -62, 295, 12, row_body))
+
+    walkway_body: list[str] = []
+    walkway_body.extend(fill_commands(-8, base_y, -245, 8, base_y + 12, 45, "air"))
+    walkway_body.extend(fill_commands(-8, surface_y, -245, 8, surface_y, 45, "polished_andesite"))
+    commands.extend(with_forceload(-8, -245, 8, 45, walkway_body))
     return commands
 
 
 def paths_and_spawn(spawn_base_y: int) -> list[str]:
     spawn_y = spawn_base_y + SPAWN_OVERLOOK_Y_OFFSET
     commands: list[str] = []
-    commands.extend(fill_commands(SPAWN_X - 34, spawn_y - 1, SPAWN_Z - 18, SPAWN_X + 34, spawn_y - 1, SPAWN_Z + 18, "glass"))
-    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z - 18, "sea_lantern"))
-    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z + 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
-    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X - 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
-    commands.extend(fill_commands(SPAWN_X + 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    platform_body: list[str] = []
+    platform_body.extend(fill_commands(SPAWN_X - 34, spawn_y - 1, SPAWN_Z - 18, SPAWN_X + 34, spawn_y - 1, SPAWN_Z + 18, "glass"))
+    platform_body.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z - 18, "sea_lantern"))
+    platform_body.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z + 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    platform_body.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X - 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    platform_body.extend(fill_commands(SPAWN_X + 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    commands.extend(with_forceload(SPAWN_X - 34, SPAWN_Z - 18, SPAWN_X + 34, SPAWN_Z + 18, platform_body))
     commands.extend([
         "gamerule doMobSpawning false",
         "gamerule doDaylightCycle false",
@@ -423,7 +456,12 @@ def main() -> int:
             for exhibit_id, _, _ in COMPACT_EXHIBITS
         )
     clear_top_y = min(MAX_PROBE_Y, cluster_base_y + max(180, max_model_height + 16))
-    all_commands.extend(prepare_plot(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, cluster_base_y, clear_top_y))
+    if not args.skip_ots:
+        for exhibit_id, center_x, center_z in COMPACT_EXHIBITS:
+            _, relative_path = OTS_EXHIBITS[exhibit_id]
+            width, depth = ots_footprint(REPO_ROOT / relative_path)
+            plot_radius = max(28, max(width, depth) // 2 + 12)
+            all_commands.extend(prepare_plot(center_x, center_z, plot_radius, cluster_base_y, clear_top_y))
     if not args.skip_ots:
         for exhibit_id, center_x, center_z in COMPACT_EXHIBITS:
             title, relative_path = OTS_EXHIBITS[exhibit_id]
