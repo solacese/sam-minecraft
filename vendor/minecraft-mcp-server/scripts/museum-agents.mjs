@@ -71,7 +71,7 @@ function shouldRespond(agent, message) {
 function responseFor(agent, username, message) {
   const text = message.toLowerCase();
   if (text.includes('tour') || text.includes('where')) {
-    return `${username}, start at spawn: Munich is center, Eiffel is east, Sydney is south, Architecture Tower is west, Colosseum is southeast.`;
+    return `${username}, start at spawn: Munich is at the origin, Eiffel is just east, Sydney is west, Architecture Tower is southwest, Colosseum is south, and Neuschwanstein is southeast.`;
   }
   if (text.includes('agents') || text.includes('help')) {
     return `We are six museum agents: orchestration, site planning, structure, landmark fidelity, materials, and landscaping. Ask any of our names for details.`;
