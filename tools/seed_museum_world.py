@@ -17,6 +17,7 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 FALLBACK_BASE_Y = 68
 MIN_WORLD_Y = -64
 MAX_PROBE_Y = 220
+MAX_BUILD_BASE_Y = 88
 FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
 
@@ -149,11 +150,15 @@ def find_ground_y(x: int, z: int, compose_file: str) -> int:
     for y, line in zip(probe_ys, rcon_lines(stdout)):
         if "Test passed" in line:
             return y
-    print(f"WARNING: could not find terrain at {x},{z}; falling back to Y {FALLBACK_BASE_Y - 1}")
+    print(f"WARNING: could not find terrain at {x},{z}; falling back to Y {FALLBACK_BASE_Y - 1}", flush=True)
     return FALLBACK_BASE_Y - 1
 
 
 def find_site_base_y(center_x: int, center_z: int, radius: int, compose_file: str) -> int:
+    x1, x2 = center_x - radius, center_x + radius
+    z1, z2 = center_z - radius, center_z + radius
+    rcon_capture([f"forceload add {x1} {z1} {x2} {z2}"], compose_file)
+    time.sleep(1)
     offset = max(12, min(32, radius // 3))
     samples = [
         (center_x, center_z),
@@ -164,8 +169,10 @@ def find_site_base_y(center_x: int, center_z: int, radius: int, compose_file: st
     ]
     ground_ys = sorted(find_ground_y(x, z, compose_file) for x, z in samples)
     terrain_y = ground_ys[len(ground_ys) // 2]
-    base_y = terrain_y + 1
-    print(f"Site {center_x},{center_z}: terrain samples {ground_ys}; building base Y {base_y}")
+    raw_base_y = terrain_y + 1
+    base_y = min(raw_base_y, MAX_BUILD_BASE_Y)
+    terrace_note = "" if base_y == raw_base_y else f"; terraced down from Y {raw_base_y}"
+    print(f"Site {center_x},{center_z}: terrain samples {ground_ys}; building base Y {base_y}{terrace_note}", flush=True)
     return base_y
 
 
