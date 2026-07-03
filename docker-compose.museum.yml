@@ -25,7 +25,6 @@ services:
       ALLOW_FLIGHT: "TRUE"
       SPAWN_PROTECTION: "0"
       ONLINE_MODE: "FALSE"
-      OPS: "OrchGuide_o11,DesignDora_l4s,BuildBea_l33,MonumentMarc_m9,SupplySid_l31,ForestFinn_q32"
       ICON: "/extras/server-icon.png"
       ENABLE_RCON: "TRUE"
       RCON_PASSWORD: "${RCON_PASSWORD:-sam-museum-change-me}"
