@@ -74,33 +74,33 @@
     },
     {
       "name": "Eiffel Tower",
-      "origin": "145, -5",
+      "origin": "105, 0",
       "status": "Seeded exhibit",
-      "description": "Classic landmark build for public tours and agent narration, placed east of Munich with a yellow marker."
+      "description": "Classic landmark build in the visible front row, just right of Munich with a yellow marker."
     },
     {
       "name": "Sydney Opera House",
-      "origin": "-145, -5",
+      "origin": "-170, 0",
       "status": "Seeded exhibit",
-      "description": "Imported OTS model for a cinematic showcase, placed west of Munich with a white marker."
+      "description": "Imported OTS model in the visible front row, far left with a white marker."
     },
     {
       "name": "Leaning Tower of Pisa",
-      "origin": "-100, 110",
+      "origin": "-95, 0",
       "status": "Seeded exhibit",
-      "description": "Leaning Tower of Pisa exhibit placed southwest of Munich with a lime marker."
+      "description": "Leaning Tower of Pisa exhibit in the visible front row, left of Munich with a lime marker."
     },
     {
       "name": "Colosseum",
-      "origin": "0, 125",
+      "origin": "170, 0",
       "status": "Seeded exhibit",
-      "description": "Curated landmark for a historical architecture zone, placed south of Munich with an orange marker."
+      "description": "Curated landmark in the visible front row, right of Eiffel with an orange marker."
     },
     {
       "name": "Neuschwanstein Castle",
-      "origin": "110, 115",
+      "origin": "245, 0",
       "status": "Seeded exhibit",
-      "description": "German landmark exhibit complementing the Munich showcase, placed southeast with a purple marker."
+      "description": "German landmark in the visible front row, far right with a purple marker."
     }
   ],
   "agents": [

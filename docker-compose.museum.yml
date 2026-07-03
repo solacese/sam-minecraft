@@ -14,6 +14,8 @@ services:
       MEMORY: "${MC_MEMORY:-6G}"
       MOTD: "SAM Minecraft Museum - AI agents building landmark worlds"
       MAX_PLAYERS: "${MC_MAX_PLAYERS:-40}"
+      VIEW_DISTANCE: "${MC_VIEW_DISTANCE:-20}"
+      SIMULATION_DISTANCE: "${MC_SIMULATION_DISTANCE:-10}"
       SEED: "${MC_SEED:-sam-minecraft-museum-natural}"
       GENERATE_STRUCTURES: "false"
       MODE: "creative"
@@ -24,10 +26,12 @@ services:
       SPAWN_PROTECTION: "0"
       ONLINE_MODE: "FALSE"
       OPS: "OrchGuide_o11,DesignDora_l4s,BuildBea_l33,MonumentMarc_m9,SupplySid_l31,ForestFinn_q32"
+      ICON: "/extras/server-icon.png"
       ENABLE_RCON: "TRUE"
       RCON_PASSWORD: "${RCON_PASSWORD:-sam-museum-change-me}"
     volumes:
       - museum-mc-data:/data
+      - ./assets/minecraft/server-icon.png:/extras/server-icon.png:ro
 
   museum-agents:
     image: node:22-bookworm-slim

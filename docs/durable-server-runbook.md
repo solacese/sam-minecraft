@@ -34,14 +34,14 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 
 | Landmark | Center |
 |---|---:|
+| Sydney Opera House | `-170, 0` |
+| Leaning Tower of Pisa | `-95, 0` |
 | Munich Famous Building | `0, 0` |
-| Eiffel Tower | `145, -5` |
-| Sydney Opera House | `-145, -5` |
-| Leaning Tower of Pisa | `-100, 110` |
-| Colosseum | `0, 125` |
-| Neuschwanstein Castle | `110, 115` |
+| Eiffel Tower | `105, 0` |
+| Colosseum | `170, 0` |
+| Neuschwanstein Castle | `245, 0` |
 
-The seed script probes local terrain at the origin, prepares one readable cluster plaza centered on `0, 0`, places each exhibit close enough to visit quickly, and adds colored markers so non-Munich landmarks are visible from the main route. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
+The seed script probes local terrain at the origin, prepares one front-facing row centered on `0, 0`, places the exhibits left-to-right in front of an elevated glass overlook, and adds colored markers so non-Munich landmarks are visible immediately. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
 ## Launch Checklist
 

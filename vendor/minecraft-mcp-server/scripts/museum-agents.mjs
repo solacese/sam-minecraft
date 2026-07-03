@@ -8,13 +8,13 @@ const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 
 const waypoints = [
-  { label: 'spawn overlook', x: 0, z: -165 },
-  { label: 'Munich origin exhibit', x: 8, z: -52 },
-  { label: 'Eiffel Tower east plaza', x: 153, z: -43 },
-  { label: 'Sydney Opera House west plaza', x: -137, z: -50 },
-  { label: 'Leaning Tower of Pisa southwest plaza', x: -92, z: 82 },
-  { label: 'Colosseum south plaza', x: 8, z: 80 },
-  { label: 'Neuschwanstein southeast plaza', x: 118, z: 77 }
+  { label: 'spawn overlook', x: 0, z: -210 },
+  { label: 'Sydney Opera House west display', x: -170, z: -52 },
+  { label: 'Leaning Tower of Pisa west-center display', x: -95, z: -52 },
+  { label: 'Munich origin display', x: 8, z: -52 },
+  { label: 'Eiffel Tower east-center display', x: 105, z: -52 },
+  { label: 'Colosseum east display', x: 170, z: -52 },
+  { label: 'Neuschwanstein far-east display', x: 245, z: -52 }
 ];
 
 const agents = [
@@ -22,7 +22,7 @@ const agents = [
     username: 'OrchGuide_o11',
     label: 'Orchestrator',
     role: 'museum guide and mission control',
-    home: { x: 0, z: -165 },
+    home: { x: 0, z: -210 },
     aliases: ['orchestrator', 'orch', 'guide', 'agent', 'sam'],
     topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat']
   },
@@ -30,7 +30,7 @@ const agents = [
     username: 'DesignDora_l4s',
     label: 'Design Dora',
     role: 'site planner',
-    home: { x: -16, z: -160 },
+    home: { x: -16, z: -210 },
     aliases: ['dora', 'design', 'planner'],
     topics: ['site', 'path', 'plaza', 'layout', 'route', 'spawn']
   },
@@ -38,7 +38,7 @@ const agents = [
     username: 'BuildBea_l33',
     label: 'Build Bea',
     role: 'structure specialist',
-    home: { x: -8, z: -160 },
+    home: { x: -8, z: -210 },
     aliases: ['bea', 'build', 'builder'],
     topics: ['structure', 'layers', 'tower', 'build', 'blocks', 'height']
   },
@@ -46,7 +46,7 @@ const agents = [
     username: 'MonumentMarc_m9',
     label: 'Monument Marc',
     role: 'landmark fidelity specialist',
-    home: { x: 0, z: -160 },
+    home: { x: 0, z: -210 },
     aliases: ['marc', 'monument'],
     topics: ['munich', 'eiffel', 'sydney', 'pisa', 'colosseum', 'neuschwanstein', 'landmark', 'silhouette']
   },
@@ -54,7 +54,7 @@ const agents = [
     username: 'SupplySid_l31',
     label: 'Supply Sid',
     role: 'materials and finishing specialist',
-    home: { x: 8, z: -160 },
+    home: { x: 8, z: -210 },
     aliases: ['sid', 'supply', 'materials'],
     topics: ['materials', 'palette', 'finish', 'glass', 'marker', 'beacon']
   },
@@ -62,7 +62,7 @@ const agents = [
     username: 'ForestFinn_q32',
     label: 'Forest Finn',
     role: 'landscaping specialist',
-    home: { x: 16, z: -160 },
+    home: { x: 16, z: -210 },
     aliases: ['finn', 'forest', 'landscape'],
     topics: ['landscape', 'garden', 'trees', 'outside', 'terrain', 'ground']
   }
@@ -118,7 +118,7 @@ function shouldRespond(agent, message) {
 function responseFor(agent, username, message) {
   const text = normalize(message);
   if (text.includes('tour') || text.includes('where')) {
-    return `${username}, start at spawn: Munich is at 0,0, Eiffel is east, Sydney is west, Pisa is southwest, Colosseum is south, and Neuschwanstein is southeast.`;
+    return `${username}, look south from the glass overlook: Sydney, Pisa, Munich, Eiffel, Colosseum, and Neuschwanstein are arranged left to right in one visible row.`;
   }
   if (text.includes('agents') || text.includes('help') || text.includes('team')) {
     return `${username}, we are six guide agents. We answer chat, patrol waypoints, and post coordination updates while the museum stays in creative mode.`;
@@ -127,22 +127,22 @@ function responseFor(agent, username, message) {
     return `${username}, each guide is cycling through exhibit waypoints and has 50 coordination messages queued for the activity stream.`;
   }
   if (text.includes('munich')) {
-    return `${username}, Munich is the large OTS flagship at the origin. Use it as the center marker for the full cluster.`;
+    return `${username}, Munich is the large OTS flagship at the origin, centered in the visible row.`;
   }
   if (text.includes('eiffel')) {
-    return `${username}, Eiffel is east of Munich with a yellow marker and full-height tower profile.`;
+    return `${username}, Eiffel is just right of Munich in the front row, with a yellow marker and full-height tower profile.`;
   }
   if (text.includes('sydney')) {
-    return `${username}, Sydney is west of Munich with a white marker and the imported Opera House model.`;
+    return `${username}, Sydney is far left in the visible row, with a white marker and imported Opera House model.`;
   }
   if (text.includes('pisa') || text.includes('architecture')) {
-    return `${username}, Pisa is southwest of the origin cluster with a lime marker and leaning staged tower.`;
+    return `${username}, Pisa is left of Munich in the visible row, with a lime marker and leaning staged tower.`;
   }
   if (text.includes('colosseum')) {
-    return `${username}, the Colosseum is south of Munich with an orange marker and a larger amphitheater footprint.`;
+    return `${username}, the Colosseum is right of Eiffel in the visible row, with an orange marker and larger amphitheater footprint.`;
   }
   if (text.includes('neuschwanstein') || text.includes('castle')) {
-    return `${username}, Neuschwanstein is southeast of Munich with a purple marker and castle towers.`;
+    return `${username}, Neuschwanstein is far right in the visible row, with a purple marker and castle towers.`;
   }
   if (text.includes('build')) {
     return `${username}, public visitors can explore in creative mode; curated builds still run through the controlled museum scripts.`;

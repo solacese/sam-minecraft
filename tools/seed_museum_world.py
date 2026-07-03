@@ -22,17 +22,18 @@ FOUNDATION_DEPTH = 24
 MAX_FILL_VOLUME = 32768
 CLUSTER_CENTER_X = 0
 CLUSTER_CENTER_Z = 0
-CLUSTER_RADIUS = 230
+CLUSTER_RADIUS = 300
 SPAWN_X = 0
-SPAWN_Z = -175
+SPAWN_Z = -245
+SPAWN_OVERLOOK_Y_OFFSET = 52
 
 COMPACT_EXHIBITS = [
+    ("sydney", -170, 0),
+    ("architecture", -95, 0),
     ("munich", 0, 0),
-    ("eiffel", 145, -5),
-    ("sydney", -145, -5),
-    ("architecture", -100, 110),
-    ("colosseum", 0, 125),
-    ("neuschwanstein", 110, 115),
+    ("eiffel", 105, 0),
+    ("colosseum", 170, 0),
+    ("neuschwanstein", 245, 0),
 ]
 
 LANDMARK_MARKERS = {
@@ -356,20 +357,25 @@ def marker_commands(exhibit_centers: dict[str, tuple[int, int]], base_y: int) ->
 def plaza_path_commands(base_y: int) -> list[str]:
     surface_y = base_y - 1
     commands: list[str] = []
-    commands.extend(fill_commands(-180, surface_y, -8, 180, surface_y, 8, "polished_andesite"))
-    commands.extend(fill_commands(-8, surface_y, -185, 8, surface_y, 165, "polished_andesite"))
-    commands.extend(fill_commands(-135, surface_y, 100, 135, surface_y, 116, "polished_andesite"))
-    commands.extend(fill_commands(-150, surface_y, -18, -85, surface_y, -2, "polished_andesite"))
-    commands.extend(fill_commands(85, surface_y, -18, 155, surface_y, -2, "polished_andesite"))
+    commands.extend(fill_commands(-230, surface_y, -12, 285, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(-8, surface_y, -245, 8, surface_y, 45, "polished_andesite"))
+    commands.extend(fill_commands(-235, surface_y, -62, 285, surface_y, -46, "polished_andesite"))
+    commands.extend(fill_commands(-178, surface_y, -62, -162, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(-103, surface_y, -62, -87, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(97, surface_y, -62, 113, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(162, surface_y, -62, 178, surface_y, 12, "polished_andesite"))
+    commands.extend(fill_commands(237, surface_y, -62, 253, surface_y, 12, "polished_andesite"))
     return commands
 
 
 def paths_and_spawn(spawn_base_y: int) -> list[str]:
-    surface_y = spawn_base_y - 1
+    spawn_y = spawn_base_y + SPAWN_OVERLOOK_Y_OFFSET
     commands: list[str] = []
-    commands.extend(fill_commands(SPAWN_X - 18, spawn_base_y - 8, SPAWN_Z - 18, SPAWN_X + 18, spawn_base_y - 4, SPAWN_Z + 16, "stone"))
-    commands.extend(fill_commands(SPAWN_X - 18, spawn_base_y - 3, SPAWN_Z - 18, SPAWN_X + 18, spawn_base_y - 2, SPAWN_Z + 16, "dirt"))
-    commands.extend(fill_commands(SPAWN_X - 18, surface_y, SPAWN_Z - 18, SPAWN_X + 18, surface_y, SPAWN_Z + 16, "polished_andesite"))
+    commands.extend(fill_commands(SPAWN_X - 34, spawn_y - 1, SPAWN_Z - 18, SPAWN_X + 34, spawn_y - 1, SPAWN_Z + 18, "glass"))
+    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z - 18, "sea_lantern"))
+    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z + 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    commands.extend(fill_commands(SPAWN_X - 34, spawn_y, SPAWN_Z - 18, SPAWN_X - 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
+    commands.extend(fill_commands(SPAWN_X + 34, spawn_y, SPAWN_Z - 18, SPAWN_X + 34, spawn_y, SPAWN_Z + 18, "sea_lantern"))
     commands.extend([
         "gamerule doMobSpawning false",
         "gamerule doDaylightCycle false",
@@ -380,9 +386,9 @@ def paths_and_spawn(spawn_base_y: int) -> list[str]:
         "defaultgamemode creative",
         "gamemode creative @a",
         *[f"op {agent}" for agent in GUIDE_AGENTS],
-        f"setworldspawn {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
-        f"spawnpoint @a {SPAWN_X} {spawn_base_y} {SPAWN_Z}",
-        f"tp @a {SPAWN_X} {spawn_base_y + 1} {SPAWN_Z - 4} 0 10",
+        f"setworldspawn {SPAWN_X} {spawn_y} {SPAWN_Z}",
+        f"spawnpoint @a {SPAWN_X} {spawn_y} {SPAWN_Z}",
+        f"tp @a {SPAWN_X} {spawn_y + 1} {SPAWN_Z} 0 18",
     ])
     return commands
 
