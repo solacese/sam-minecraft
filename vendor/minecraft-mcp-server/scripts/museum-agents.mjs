@@ -151,7 +151,8 @@ function responseFor(agent, username, message) {
 }
 
 function chatterLine(agent, lineNumber, agentIndex) {
-  const target = agents[(agentIndex + lineNumber + 1) % agents.length];
+  const otherAgents = agents.filter((_, index) => index !== agentIndex);
+  const target = otherAgents[lineNumber % otherAgents.length];
   const waypoint = waypoints[(agentIndex + lineNumber) % waypoints.length];
   const template = chatterTemplates[lineNumber % chatterTemplates.length];
   const phrase = template.replace('{place}', waypoint.label);
