@@ -15,7 +15,7 @@ The current AWS Elastic IP is `16.54.209.252`.
 
 SAM Minecraft Museum is a live demonstration of multiple AI agents coordinating to build complex structures in Minecraft. Visitors can watch recordings, join the persistent Minecraft world, chat with museum guide agents, and request future landmarks.
 
-The important idea is not just that blocks appear in Minecraft. The demo shows an agent team coordinating specialized roles: an orchestrator, site planner, structural builder, landmark specialist, materials specialist, and landscaper. The activity stream makes the teamwork visible while trusted build tools keep the world controlled.
+The important idea is not just that blocks appear in Minecraft. The demo shows an agent team coordinating specialized roles: an orchestrator, site planner, structural builder, landmark specialist, materials specialist, and landscaper. The activity stream makes the teamwork visible while trusted build tools keep the world controlled. The hosted museum now runs in a normal non-flat world, with landmark exhibits grounded into the terrain instead of floating on a superflat layer.
 
 ## Current Featured Builds
 

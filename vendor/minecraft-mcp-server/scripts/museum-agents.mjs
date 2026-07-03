@@ -8,7 +8,7 @@ const agents = [
     username: 'OrchGuide_o11',
     label: 'Orchestrator',
     role: 'museum guide and mission control',
-    home: { x: 0, y: 69, z: -102 },
+    home: { x: 0, z: -102 },
     aliases: ['orchestrator', 'orch', 'guide', 'agent'],
     topics: ['tour', 'help', 'agents', 'museum']
   },
@@ -16,7 +16,7 @@ const agents = [
     username: 'DesignDora_l4s',
     label: 'Design Dora',
     role: 'site planner',
-    home: { x: -10, y: 69, z: -96 },
+    home: { x: -10, z: -96 },
     aliases: ['dora', 'design'],
     topics: ['site', 'path', 'plaza', 'layout']
   },
@@ -24,7 +24,7 @@ const agents = [
     username: 'BuildBea_l33',
     label: 'Build Bea',
     role: 'structure specialist',
-    home: { x: -5, y: 69, z: -96 },
+    home: { x: -5, z: -96 },
     aliases: ['bea', 'build'],
     topics: ['structure', 'layers', 'tower', 'build']
   },
@@ -32,7 +32,7 @@ const agents = [
     username: 'MonumentMarc_m9',
     label: 'Monument Marc',
     role: 'landmark fidelity specialist',
-    home: { x: 0, y: 69, z: -96 },
+    home: { x: 0, z: -96 },
     aliases: ['marc', 'monument'],
     topics: ['munich', 'eiffel', 'landmark', 'silhouette']
   },
@@ -40,7 +40,7 @@ const agents = [
     username: 'SupplySid_l31',
     label: 'Supply Sid',
     role: 'materials and finishing specialist',
-    home: { x: 5, y: 69, z: -96 },
+    home: { x: 5, z: -96 },
     aliases: ['sid', 'supply'],
     topics: ['materials', 'palette', 'finish', 'glass']
   },
@@ -48,7 +48,7 @@ const agents = [
     username: 'ForestFinn_q32',
     label: 'Forest Finn',
     role: 'landscaping specialist',
-    home: { x: 10, y: 69, z: -96 },
+    home: { x: 10, z: -96 },
     aliases: ['finn', 'forest'],
     topics: ['landscape', 'garden', 'trees', 'outside']
   }
@@ -100,7 +100,8 @@ function createAgent(agent, index) {
 
   bot.once('spawn', async () => {
     await sleep(1000 + index * 700);
-    bot.chat(`/tp ${agent.username} ${agent.home.x} ${agent.home.y} ${agent.home.z}`);
+    const homeY = Math.ceil(bot.entity.position.y);
+    bot.chat(`/tp ${agent.username} ${agent.home.x} ${homeY} ${agent.home.z}`);
     await sleep(300);
     bot.chat(`${agent.label} online: ${agent.role}. Say my name or ask for a tour.`);
   });

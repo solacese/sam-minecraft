@@ -14,17 +14,7 @@ services:
       MEMORY: "${MC_MEMORY:-6G}"
       MOTD: "SAM Minecraft Museum - AI agents building landmark worlds"
       MAX_PLAYERS: "${MC_MAX_PLAYERS:-40}"
-      LEVEL_TYPE: "FLAT"
-      GENERATOR_SETTINGS: >-
-        {
-          "layers": [
-            { "block": "minecraft:bedrock", "height": 1 },
-            { "block": "minecraft:stone", "height": 60 },
-            { "block": "minecraft:dirt", "height": 6 },
-            { "block": "minecraft:grass_block", "height": 1 }
-          ],
-          "biome": "minecraft:plains"
-        }
+      SEED: "${MC_SEED:-sam-minecraft-museum-natural}"
       GENERATE_STRUCTURES: "false"
       MODE: "adventure"
       FORCE_GAMEMODE: "TRUE"

@@ -6,7 +6,7 @@
 - Always-on Minecraft Java server at `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
 - Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
-- A baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Architecture Tower, Colosseum, and Neuschwanstein Castle.
+- A normal, non-flat baseline museum world with Munich Famous Building, Eiffel Tower, Sydney Opera House, Architecture Tower, Colosseum, and Neuschwanstein Castle grounded into local terrain.
 
 ## Recommended AWS v1 Shape
 
@@ -41,7 +41,7 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 | Colosseum | `220, 220` |
 | Neuschwanstein Castle | `-220, 220` |
 
-After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
+The seed script probes local terrain before placing each exhibit. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
 ## Launch Checklist
 
