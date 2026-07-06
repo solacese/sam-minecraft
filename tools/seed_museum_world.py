@@ -462,11 +462,11 @@ def main() -> int:
             width, depth = ots_footprint(REPO_ROOT / relative_path)
             plot_radius = max(28, max(width, depth) // 2 + 12)
             all_commands.extend(prepare_plot(center_x, center_z, plot_radius, cluster_base_y, clear_top_y))
+    all_commands.extend(plaza_path_commands(cluster_base_y))
     if not args.skip_ots:
         for exhibit_id, center_x, center_z in COMPACT_EXHIBITS:
             title, relative_path = OTS_EXHIBITS[exhibit_id]
             all_commands.extend(place_ots(REPO_ROOT / relative_path, center_x, center_z, title, base_y_by_exhibit[exhibit_id]))
-    all_commands.extend(plaza_path_commands(cluster_base_y))
     all_commands.extend(marker_commands(exhibit_centers, cluster_base_y))
     all_commands.extend(paths_and_spawn(cluster_base_y))
     all_commands.append("save-all flush")
