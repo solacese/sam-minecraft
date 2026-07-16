@@ -25,10 +25,10 @@
       <section class="museum-dashboard" aria-labelledby="museum-title">
         <div class="intro">
           <p class="eyebrow">Live Minecraft world + AI agent showcase</p>
-          <h1 id="museum-title">Complex landmarks built by coordinating AI agents</h1>
+          <h1 id="museum-title">Landmarks continuously built by coordinating AI agents</h1>
           <p class="lede">
-            Watch curated build recordings, join the persistent museum server, and request new
-            structures for the agent team to stage.
+            Join the persistent museum server to watch six OTS landmark models dissolve and
+            rebuild block by block while guide agents narrate the coordination.
           </p>
           <div class="actions">
             <a class="button primary" href="#recordings">Watch recordings</a>
@@ -50,6 +50,7 @@
             <a id="chat-address" href="#" rel="noreferrer">Loading...</a>
           </div>
           <div class="status-note" id="server-note">Server details load from data/museum.json.</div>
+          <div class="dynamic-status" id="dynamic-status" aria-live="polite"></div>
         </aside>
       </section>
 
@@ -70,8 +71,8 @@
           <h2 id="visit-title">Join the durable Minecraft world</h2>
           <p>
             The hosted world is a curated landmark museum. Visitors can tour the structures, watch
-            agents in chat, and submit requests. Public agents are read-only by default; trusted
-            build jobs run through a queue.
+            agents in chat, and see the same OTS models being rebuilt in a rate-limited loop.
+            Public agents are read-only by default; trusted build jobs run through controlled scripts.
           </p>
         </div>
         <div class="visit-card">
@@ -86,7 +87,7 @@
             </div>
             <div>
               <dt>Mode</dt>
-              <dd>Creative museum, peaceful, guided tours</dd>
+              <dd>Creative museum, peaceful, live build loop</dd>
             </div>
           </dl>
         </div>
@@ -96,7 +97,7 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Museum map</p>
-            <h2 id="landmarks-title">Planned landmark collection</h2>
+            <h2 id="landmarks-title">Live dynamic landmark collection</h2>
           </div>
         </div>
         <div id="landmark-grid" class="landmark-grid" aria-live="polite"></div>

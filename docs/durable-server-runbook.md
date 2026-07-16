@@ -7,6 +7,7 @@
 - Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
 - A normal, non-flat baseline museum world with six close, high-quality OTS-backed exhibits: Sydney Opera House, Arc de Triomphe, Munich Famous Building, Eiffel Tower, Saint Basil's Cathedral, and NY Chrysler Building.
+- A kinetic museum loop where those same six OTS exhibits repeatedly unbuild top-down and rebuild bottom-up through individual, rate-limited `setblock` commands.
 
 ## Recommended AWS v1 Shape
 
@@ -43,6 +44,30 @@ Until API Gateway is deployed, the site falls back to prefilled GitHub issues.
 
 The seed script probes local terrain at the origin, prepares one front-facing row centered on `0, 0`, places six prebuilt `.ots_blocks` models left-to-right in front of an elevated glass overlook, and adds colored markers so every exhibit is visible immediately. The museum seed must not use raw draft landmark specs. After seeding, add paths and signs, run `save-all flush`, stop mutating agents, and create the baseline EBS snapshot.
 
+## Dynamic Builder Loop
+
+The production compose stack includes `museum-builder`, a separate Node worker from `museum-agents`. It connects to internal RCON at `mc:25575`, parses the same six `.ots_blocks` files, and only sends individual `setblock` commands for known model coordinates. It must not use `fill` for landmark animation and must not touch paths, terrain, marker beacons, spawn, or agent positions.
+
+Default runtime controls:
+
+- `MUSEUM_BLOCKS_PER_SECOND=100`
+- `MUSEUM_ACTIVE_JOBS=2`
+- `MUSEUM_BATCH_SIZE=25`
+- `MUSEUM_BUILT_HOLD_MS=120000`
+- `MUSEUM_EMPTY_HOLD_MS=10000`
+
+Rollback or cleanup command:
+
+```bash
+MUSEUM_BUILDER_MODE=restore-once docker compose -f docker-compose.museum.yml up --no-deps museum-builder
+```
+
+After `restore-once`, restart the normal loop with:
+
+```bash
+docker compose -f docker-compose.museum.yml up -d museum-builder museum-agents
+```
+
 ## Launch Checklist
 
 - Rotate any credentials that were shared in chat or docs.
@@ -53,7 +78,7 @@ The seed script probes local terrain at the origin, prepares one front-facing ro
 - Move secrets into SSM or Secrets Manager.
 - Start Minecraft/SAM under systemd.
 - Seed the museum world and create the baseline snapshot.
-- Test website, chat, Minecraft join, request fallback, and server reboot recovery.
+- Test website, chat, Minecraft join, request fallback, dynamic builder loop, restore-once, and server reboot recovery.
 
 ## Cost Planning
 

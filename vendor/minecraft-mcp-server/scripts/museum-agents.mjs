@@ -21,10 +21,10 @@ const agents = [
   {
     username: 'OrchGuide_o11',
     label: 'Orchestrator',
-    role: 'museum guide and mission control',
+    role: 'museum guide and live build mission control',
     home: { x: 0, z: -210 },
     aliases: ['orchestrator', 'orch', 'guide', 'agent', 'sam'],
-    topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat']
+    topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat', 'dynamic', 'loop']
   },
   {
     username: 'DesignDora_l4s',
@@ -40,7 +40,7 @@ const agents = [
     role: 'structure specialist',
     home: { x: -8, z: -210 },
     aliases: ['bea', 'build', 'builder'],
-    topics: ['structure', 'layers', 'tower', 'build', 'blocks', 'height']
+    topics: ['structure', 'layers', 'tower', 'build', 'blocks', 'height', 'rebuild', 'unbuild', 'dissolve']
   },
   {
     username: 'MonumentMarc_m9',
@@ -48,7 +48,7 @@ const agents = [
     role: 'landmark fidelity specialist',
     home: { x: 0, z: -210 },
     aliases: ['marc', 'monument'],
-    topics: ['munich', 'eiffel', 'sydney', 'arc', 'triumph', 'basil', 'cathedral', 'chrysler', 'landmark', 'silhouette']
+    topics: ['munich', 'eiffel', 'sydney', 'arc', 'triumph', 'basil', 'cathedral', 'chrysler', 'landmark', 'silhouette', 'model']
   },
   {
     username: 'SupplySid_l31',
@@ -79,7 +79,17 @@ const chatterTemplates = [
   'watching visitor movement past {place}',
   'calling out the next tour stop: {place}',
   'checking that {place} is not hidden behind Munich',
-  'keeping the origin-cluster route alive near {place}'
+  'keeping the origin-cluster route alive near {place}',
+  'tracking the live dissolve phase at {place}',
+  'checking the rebuild rhythm around {place}',
+  'confirming Build Bea has the lower layers queued at {place}',
+  'asking Monument Marc to verify the silhouette at {place}',
+  'asking Supply Sid to watch palette consistency at {place}',
+  'keeping visitors clear while the trusted builder edits {place}',
+  'confirming only OTS model blocks are being touched at {place}',
+  'timing the next staggered animation slot for {place}',
+  'watching the top layers unbuild cleanly at {place}',
+  'checking that paths and markers remain untouched near {place}'
 ];
 
 function sleep(ms) {
@@ -121,10 +131,13 @@ function responseFor(agent, username, message) {
     return `${username}, look south from the glass overlook: Sydney, Arc de Triomphe, Munich, Eiffel, Saint Basil's, and Chrysler are arranged left to right in one close OTS model row.`;
   }
   if (text.includes('agents') || text.includes('help') || text.includes('team')) {
-    return `${username}, we are six guide agents. We answer chat, patrol waypoints, and post coordination updates while the museum stays in creative mode.`;
+    return `${username}, we are six guide agents. We answer chat, patrol waypoints, and narrate the live build loop while a trusted builder edits the landmark blocks.`;
   }
   if (text.includes('alive') || text.includes('move') || text.includes('walking')) {
-    return `${username}, each guide is cycling through exhibit waypoints and has 50 coordination messages queued for the activity stream.`;
+    return `${username}, each guide is cycling through exhibit waypoints while the six landmarks dissolve and rebuild in staggered phases.`;
+  }
+  if (text.includes('dynamic') || text.includes('loop') || text.includes('rebuild') || text.includes('unbuild') || text.includes('dissolve')) {
+    return `${username}, the museum is kinetic now: two landmarks can animate at once, capped near 100 block edits per second, with unbuilds top-down and rebuilds bottom-up.`;
   }
   if (text.includes('munich')) {
     return `${username}, Munich is the large OTS flagship at the origin, centered in the visible row.`;
@@ -148,7 +161,7 @@ function responseFor(agent, username, message) {
     return `${username}, those draft placeholders were replaced. This museum row now uses six high-quality OTS-backed models only.`;
   }
   if (text.includes('build')) {
-    return `${username}, public visitors can explore in creative mode; curated builds still run through the controlled museum scripts.`;
+    return `${username}, public visitors can explore in creative mode; the landmark row is rebuilt block by block by a controlled worker while we coordinate the story in chat.`;
   }
   return `${username}, I am ${agent.label}, the ${agent.role}. Say a landmark name or ask for a tour and I will route you.`;
 }

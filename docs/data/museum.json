@@ -8,7 +8,12 @@
   "minecraft": {
     "host": "ec2-16-54-209-252.ca-central-1.compute.amazonaws.com",
     "port": "25565",
-    "note": "Public Minecraft Java server hosted on AWS. Visitors join a normal, non-flat world in creative mode and can talk to guide agents in-game."
+    "note": "Public Minecraft Java server hosted on AWS. Visitors join a normal, non-flat world in creative mode, talk to guide agents in-game, and watch the six landmark models dissolve and rebuild block by block."
+  },
+  "dynamic": {
+    "status": "Live kinetic exhibit",
+    "cadence": "The same six OTS landmarks stay in their museum positions while a trusted builder unbuilds and rebuilds them in staggered loops.",
+    "speed": "Balanced server-safe animation, capped near 100 individual block edits per second across the museum."
   },
   "request": {
     "apiEndpoint": "",
@@ -69,70 +74,70 @@
     {
       "name": "Munich Famous Building",
       "origin": "0, 0",
-      "status": "Flagship filming build",
-      "description": "Exact OTS structure placement near spawn, grounded into the natural terrain for the main recorded demo."
+      "status": "Dynamic loop exhibit",
+      "description": "Exact OTS structure placement near spawn, now rebuilt bottom-to-top after each top-down dissolve cycle."
     },
     {
       "name": "Eiffel Tower",
       "origin": "95, 0",
-      "status": "Seeded exhibit",
-      "description": "High-detail prebuilt GrabCraft Eiffel model converted into OTS blocks, just right of Munich with a yellow marker."
+      "status": "Dynamic loop exhibit",
+      "description": "High-detail prebuilt GrabCraft Eiffel model converted into OTS blocks, rebuilt in visible lower-to-upper construction passes."
     },
     {
       "name": "Sydney Opera House",
       "origin": "-200, 0",
-      "status": "Seeded exhibit",
-      "description": "Imported OTS model in the visible front row, far left with a white marker."
+      "status": "Dynamic loop exhibit",
+      "description": "Imported OTS model in the visible front row, far left with a white marker and a staggered rebuild phase."
     },
     {
       "name": "Arc de Triomphe",
       "origin": "-100, 0",
-      "status": "Seeded exhibit",
-      "description": "High-detail prebuilt GrabCraft model converted into OTS blocks, left of Munich with an orange marker."
+      "status": "Dynamic loop exhibit",
+      "description": "High-detail prebuilt GrabCraft model converted into OTS blocks, unbuilt only at known model coordinates and rebuilt from the base upward."
     },
     {
       "name": "Saint Basil's Cathedral",
       "origin": "175, 0",
-      "status": "Seeded exhibit",
-      "description": "Colorful prebuilt GrabCraft cathedral model converted into OTS blocks, right of Eiffel with a red marker."
+      "status": "Dynamic loop exhibit",
+      "description": "Colorful prebuilt GrabCraft cathedral model converted into OTS blocks, cycling through visible dissolve and restoration phases."
     },
     {
       "name": "NY Chrysler Building",
       "origin": "255, 0",
-      "status": "Seeded exhibit",
-      "description": "Tall prebuilt GrabCraft skyscraper model converted into OTS blocks, far right with a light blue marker."
+      "status": "Dynamic loop exhibit",
+      "description": "Tall prebuilt GrabCraft skyscraper model converted into OTS blocks, animated carefully because it has the largest block count."
     }
   ],
   "agents": [
     {
       "name": "OpenAI Orchestrator",
       "role": "Mission control",
-      "activity": "Routes user requests, coordinates agents, and controls trusted build execution."
+      "activity": "Routes user requests, coordinates agents, and announces each live dissolve and rebuild phase."
     },
     {
       "name": "Design Dora",
       "role": "Site planner",
-      "activity": "Reviews site layout, paths, plaza framing, and visitor flow."
+      "activity": "Reviews site layout, paths, plaza framing, visitor flow, and safe viewing positions during animation."
     },
     {
       "name": "Build Bea",
       "role": "Structure specialist",
-      "activity": "Monitors staging, lower layers, framing, walls, and roofs."
+      "activity": "Monitors staging, lower layers, framing, walls, roofs, and bottom-to-top rebuild order."
     },
     {
       "name": "Monument Marc",
       "role": "Landmark fidelity",
-      "activity": "Checks imported landmark silhouette, masonry, and recognizable details."
+      "activity": "Checks imported landmark silhouette, masonry, recognizable details, and final restored profiles."
     },
     {
       "name": "Supply Sid",
       "role": "Materials and finish",
-      "activity": "Tracks palette, utilities, glazing, and final detail passes."
+      "activity": "Tracks palette, utilities, glazing, and whether each restored block matches the OTS source."
     },
     {
       "name": "Forest Finn",
       "role": "Landscape",
-      "activity": "Plans exterior paths, garden edges, greenery, and cleanup."
+      "activity": "Watches exterior paths, garden edges, greenery, and cleanup while the landmark blocks animate."
     }
   ]
 }

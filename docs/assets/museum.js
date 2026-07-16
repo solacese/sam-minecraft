@@ -82,6 +82,16 @@ function renderAgents(agents) {
   `).join('');
 }
 
+function renderDynamic(dynamic) {
+  const panel = document.querySelector('#dynamic-status');
+  if (!panel || !dynamic) return;
+  panel.innerHTML = `
+    <strong>${escapeHtml(dynamic.status)}</strong>
+    <span>${escapeHtml(dynamic.cadence)}</span>
+    <span>${escapeHtml(dynamic.speed)}</span>
+  `;
+}
+
 function renderAccess(config) {
   const serverAddress = `${config.minecraft.host}:${config.minecraft.port}`;
   const museumAddress = document.querySelector('#museum-address');
@@ -182,6 +192,7 @@ async function main() {
   const config = await response.json();
   state.config = config;
   renderAccess(config);
+  renderDynamic(config.dynamic);
   renderRecordings(config.recordings);
   renderLandmarks(config.landmarks);
   renderAgents(config.agents);

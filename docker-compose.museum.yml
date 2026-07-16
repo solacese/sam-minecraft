@@ -37,16 +37,46 @@ services:
     restart: unless-stopped
     working_dir: /app/vendor/minecraft-mcp-server
     depends_on:
-      - mc
+      mc:
+        condition: service_healthy
     environment:
       MC_HOST: "mc"
       MC_PORT: "25565"
     volumes:
       - .:/app
     command: >
-      sh -lc "npm ci --ignore-scripts --no-audit --no-fund >/tmp/museum-agents-npm.log 2>&1 ||
+      sh -lc "set -e;
+      npm ci --ignore-scripts --no-audit --no-fund >/tmp/museum-agents-npm.log 2>&1 ||
       npm install --ignore-scripts --no-audit --no-fund >/tmp/museum-agents-npm.log 2>&1;
       node scripts/museum-agents.mjs"
+
+  museum-builder:
+    image: node:22-bookworm-slim
+    restart: unless-stopped
+    working_dir: /app/vendor/minecraft-mcp-server
+    depends_on:
+      mc:
+        condition: service_healthy
+    environment:
+      MC_RCON_HOST: "mc"
+      MC_RCON_PORT: "25575"
+      MC_RCON_PASSWORD: "${RCON_PASSWORD:-sam-museum-change-me}"
+      MUSEUM_BUILDER_MODE: "${MUSEUM_BUILDER_MODE:-loop}"
+      MUSEUM_BLOCKS_PER_SECOND: "${MUSEUM_BLOCKS_PER_SECOND:-100}"
+      MUSEUM_ACTIVE_JOBS: "${MUSEUM_ACTIVE_JOBS:-2}"
+      MUSEUM_BATCH_SIZE: "${MUSEUM_BATCH_SIZE:-25}"
+      MUSEUM_BASE_Y: "${MUSEUM_BASE_Y:-68}"
+      MUSEUM_BUILT_HOLD_MS: "${MUSEUM_BUILT_HOLD_MS:-120000}"
+      MUSEUM_EMPTY_HOLD_MS: "${MUSEUM_EMPTY_HOLD_MS:-10000}"
+      MUSEUM_PHASE_SPACING_MS: "${MUSEUM_PHASE_SPACING_MS:-30000}"
+      MUSEUM_RCON_TIMEOUT_MS: "${MUSEUM_RCON_TIMEOUT_MS:-30000}"
+    volumes:
+      - .:/app
+    command: >
+      sh -lc "set -e;
+      npm ci --ignore-scripts --no-audit --no-fund >/tmp/museum-builder-npm.log 2>&1 ||
+      npm install --ignore-scripts --no-audit --no-fund >/tmp/museum-builder-npm.log 2>&1;
+      node scripts/museum-dynamic-builder.mjs"
 
 volumes:
   museum-mc-data:

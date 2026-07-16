@@ -220,6 +220,25 @@ dt {
   margin: 14px 0 0;
 }
 
+.dynamic-status {
+  background: #eef5f1;
+  border: 1px solid #cfe0d8;
+  border-radius: 7px;
+  display: grid;
+  gap: 7px;
+  margin-top: 16px;
+  padding: 12px;
+}
+
+.dynamic-status strong {
+  color: var(--green-dark);
+}
+
+.dynamic-status span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .section {
   border-top: 1px solid var(--line);
   padding: 54px 0;
