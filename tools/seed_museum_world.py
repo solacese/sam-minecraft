@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import re
 import struct
 import subprocess
 import time
@@ -85,6 +86,47 @@ GRAVITY_REPLACEMENTS = {
     "minecraft:gravel": "minecraft:stone",
 }
 
+CLEAN_REPLACEMENTS = {
+    "minecraft:tnt": "minecraft:smooth_quartz",
+    "minecraft:coal_ore": "minecraft:stone",
+    "minecraft:deepslate_coal_ore": "minecraft:deepslate",
+    "minecraft:copper_ore": "minecraft:stone",
+    "minecraft:deepslate_copper_ore": "minecraft:deepslate",
+    "minecraft:iron_ore": "minecraft:stone",
+    "minecraft:deepslate_iron_ore": "minecraft:deepslate",
+    "minecraft:gold_ore": "minecraft:stone",
+    "minecraft:deepslate_gold_ore": "minecraft:deepslate",
+    "minecraft:redstone_ore": "minecraft:stone",
+    "minecraft:deepslate_redstone_ore": "minecraft:deepslate",
+    "minecraft:emerald_ore": "minecraft:stone",
+    "minecraft:deepslate_emerald_ore": "minecraft:deepslate",
+    "minecraft:lapis_ore": "minecraft:stone",
+    "minecraft:deepslate_lapis_ore": "minecraft:deepslate",
+    "minecraft:diamond_ore": "minecraft:stone",
+    "minecraft:deepslate_diamond_ore": "minecraft:deepslate",
+    "minecraft:nether_gold_ore": "minecraft:netherrack",
+    "minecraft:nether_quartz_ore": "minecraft:netherrack",
+    "minecraft:ancient_debris": "minecraft:polished_blackstone",
+    "minecraft:observer": "minecraft:light_gray_concrete",
+    "minecraft:dispenser": "minecraft:smooth_stone",
+    "minecraft:dropper": "minecraft:smooth_stone",
+    "minecraft:piston": "minecraft:smooth_stone",
+    "minecraft:sticky_piston": "minecraft:smooth_stone",
+    "minecraft:hopper": "minecraft:iron_block",
+    "minecraft:redstone_block": "minecraft:red_concrete",
+    "minecraft:redstone_lamp": "minecraft:sea_lantern",
+    "minecraft:command_block": "minecraft:smooth_quartz",
+    "minecraft:chain_command_block": "minecraft:smooth_quartz",
+    "minecraft:repeating_command_block": "minecraft:smooth_quartz",
+    "minecraft:structure_block": "minecraft:smooth_quartz",
+    "minecraft:jigsaw": "minecraft:smooth_quartz",
+    "minecraft:barrier": "minecraft:smooth_stone",
+    "minecraft:bedrock": "minecraft:stone",
+    "minecraft:lava": "minecraft:smooth_stone",
+    "minecraft:fire": "minecraft:smooth_stone",
+    "minecraft:soul_fire": "minecraft:smooth_stone",
+}
+
 
 @dataclass(frozen=True)
 class Block:
@@ -98,6 +140,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Seed the public SAM Minecraft Museum world.")
     parser.add_argument("--compose-file", default="docker-compose.museum.yml")
     parser.add_argument("--batch-size", type=int, default=180)
+    parser.add_argument("--base-y", type=int, default=None)
     parser.add_argument("--skip-ots", action="store_true")
     parser.add_argument("--skip-specs", action="store_true")
     return parser.parse_args()
@@ -254,13 +297,24 @@ def load_ots_blocks(path: pathlib.Path) -> list[Block]:
         offset += 4
         state = raw[offset:offset + state_len].decode("utf-8")
         offset += state_len
-        palette[block_id] = GRAVITY_REPLACEMENTS.get(state, state)
+        palette[block_id] = clean_state(GRAVITY_REPLACEMENTS.get(state, state))
     count = struct.unpack_from("<I", raw, offset)[0]
     offset += 4
     blocks: list[Block] = []
     for x, y, z, block_id in struct.iter_unpack("<iiii", raw[offset:offset + count * 16]):
         blocks.append(Block(x, y, z, palette[block_id]))
     return blocks
+
+
+def clean_state(state: str) -> str:
+    block_name = state.split("[", 1)[0]
+    if block_name in CLEAN_REPLACEMENTS:
+        return CLEAN_REPLACEMENTS[block_name]
+    if re.match(r"^minecraft:.*_(button|pressure_plate|trapdoor|door|fence_gate)(\[.*)?$", state):
+        return "minecraft:smooth_stone"
+    if re.match(r"^minecraft:(redstone_wire|repeater|comparator|lever|tripwire|tripwire_hook)(\[.*)?$", state):
+        return "minecraft:smooth_stone"
+    return state
 
 
 def place_ots(path: pathlib.Path, center_x: int, center_z: int, title: str, base_y: int) -> list[str]:
@@ -446,7 +500,11 @@ def main() -> int:
     args = parse_args()
     wait_for_server(args.compose_file)
     all_commands: list[str] = []
-    cluster_base_y = find_site_base_y(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, args.compose_file)
+    cluster_base_y = args.base_y
+    if cluster_base_y is None:
+        cluster_base_y = find_site_base_y(CLUSTER_CENTER_X, CLUSTER_CENTER_Z, CLUSTER_RADIUS, args.compose_file)
+    else:
+        print(f"Using explicit museum base Y {cluster_base_y}", flush=True)
     base_y_by_exhibit = {exhibit_id: cluster_base_y for exhibit_id, _, _ in COMPACT_EXHIBITS}
     exhibit_centers = {exhibit_id: (center_x, center_z) for exhibit_id, center_x, center_z in COMPACT_EXHIBITS}
     max_model_height = 0

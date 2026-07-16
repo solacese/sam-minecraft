@@ -122,12 +122,12 @@ const config = {
   port: Number(process.env.MC_RCON_PORT || 25575),
   password: process.env.MC_RCON_PASSWORD || process.env.RCON_PASSWORD || 'sam-museum-change-me',
   baseY: optionalNumber(argValue('--base-y') || process.env.MUSEUM_BASE_Y),
-  blocksPerSecond: positiveNumber(process.env.MUSEUM_BLOCKS_PER_SECOND, 100),
-  activeJobs: positiveInteger(process.env.MUSEUM_ACTIVE_JOBS, 2),
+  blocksPerSecond: positiveNumber(process.env.MUSEUM_BLOCKS_PER_SECOND, 60),
+  activeJobs: positiveInteger(process.env.MUSEUM_ACTIVE_JOBS, 1),
   batchSize: positiveInteger(process.env.MUSEUM_BATCH_SIZE, 25),
-  builtHoldMs: positiveInteger(process.env.MUSEUM_BUILT_HOLD_MS, 120000),
+  builtHoldMs: positiveInteger(process.env.MUSEUM_BUILT_HOLD_MS, 15000),
   emptyHoldMs: positiveInteger(process.env.MUSEUM_EMPTY_HOLD_MS, 10000),
-  phaseSpacingMs: positiveInteger(process.env.MUSEUM_PHASE_SPACING_MS, 30000),
+  phaseSpacingMs: positiveInteger(process.env.MUSEUM_PHASE_SPACING_MS, 0),
   rconTimeoutMs: positiveInteger(process.env.MUSEUM_RCON_TIMEOUT_MS, 30000),
   streamInterval: positiveInteger(process.env.MUSEUM_STREAM_INTERVAL, 500),
   saveAfterRestore: process.env.MUSEUM_SAVE_AFTER_RESTORE !== '0'
@@ -502,43 +502,40 @@ async function restoreOnce(rcon, exhibits) {
   await rcon.send(tellraw('[SAM Museum] Static landmark restore complete.', 'green'));
 }
 
-async function runExhibitLoop(rcon, slots, limiter, exhibit, index) {
-  await sleep(index * config.phaseSpacingMs);
-  while (true) {
-    const release = await slots.acquire();
+async function runExhibitCycle(rcon, limiter, exhibit) {
+  try {
+    console.log(`Starting animation cycle for ${exhibit.title}`);
+    await rcon.send(forceloadCommand(exhibit, 'add'));
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is dissolving block by block.`, 'yellow'));
+    await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air');
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is cleared. Rebuild starts shortly.`, 'gray'));
+    await sleep(config.emptyHoldMs);
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is rebuilding from lower layers upward.`, 'aqua'));
+    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build');
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is complete again.`, 'green'));
+    await rcon.send(forceloadCommand(exhibit, 'remove'));
+    await sleep(config.builtHoldMs);
+  } catch (error) {
+    console.error(`Animation cycle failed for ${exhibit.title}:`, error);
     try {
-      console.log(`Starting animation cycle for ${exhibit.title}`);
-      await rcon.send(forceloadCommand(exhibit, 'add'));
-      await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is dissolving block by block.`, 'yellow'));
-      await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air');
-      await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is cleared. Rebuild starts shortly.`, 'gray'));
-      await sleep(config.emptyHoldMs);
-      await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is rebuilding from lower layers upward.`, 'aqua'));
-      await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build');
-      await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is complete again.`, 'green'));
       await rcon.send(forceloadCommand(exhibit, 'remove'));
-      await sleep(config.builtHoldMs);
-    } catch (error) {
-      console.error(`Animation cycle failed for ${exhibit.title}:`, error);
-      try {
-        await rcon.send(forceloadCommand(exhibit, 'remove'));
-      } catch (forceloadError) {
-        console.error(`Failed to remove forceload for ${exhibit.title}:`, forceloadError);
-      }
-      await sleep(15000);
-    } finally {
-      release();
+    } catch (forceloadError) {
+      console.error(`Failed to remove forceload for ${exhibit.title}:`, forceloadError);
     }
+    await sleep(15000);
   }
 }
 
 async function loop(rcon, exhibits) {
   await rcon.send('gamerule sendCommandFeedback false');
   await rcon.send('gamerule logAdminCommands false');
-  await rcon.send(tellraw('[SAM Museum] Dynamic build loop online: landmarks will dissolve and rebuild continuously.', 'gold'));
-  const slots = new SlotLimiter(config.activeJobs);
+  await rcon.send(tellraw('[SAM Museum] Sequential build loop online: one landmark dissolves and rebuilds at a time.', 'gold'));
   const limiter = new RateLimiter(config.blocksPerSecond);
-  await Promise.all(exhibits.map((exhibit, index) => runExhibitLoop(rcon, slots, limiter, exhibit, index)));
+  while (true) {
+    for (const exhibit of exhibits) {
+      await runExhibitCycle(rcon, limiter, exhibit);
+    }
+  }
 }
 
 function printDryRun(exhibits, baseY) {
