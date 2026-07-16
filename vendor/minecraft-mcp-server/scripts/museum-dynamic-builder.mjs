@@ -74,6 +74,47 @@ const GRAVITY_REPLACEMENTS = new Map([
   ['minecraft:gravel', 'minecraft:stone']
 ]);
 
+const CLEAN_REPLACEMENTS = new Map([
+  ['minecraft:tnt', 'minecraft:smooth_quartz'],
+  ['minecraft:coal_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_coal_ore', 'minecraft:deepslate'],
+  ['minecraft:copper_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_copper_ore', 'minecraft:deepslate'],
+  ['minecraft:iron_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_iron_ore', 'minecraft:deepslate'],
+  ['minecraft:gold_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_gold_ore', 'minecraft:deepslate'],
+  ['minecraft:redstone_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_redstone_ore', 'minecraft:deepslate'],
+  ['minecraft:emerald_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_emerald_ore', 'minecraft:deepslate'],
+  ['minecraft:lapis_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_lapis_ore', 'minecraft:deepslate'],
+  ['minecraft:diamond_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_diamond_ore', 'minecraft:deepslate'],
+  ['minecraft:nether_gold_ore', 'minecraft:netherrack'],
+  ['minecraft:nether_quartz_ore', 'minecraft:netherrack'],
+  ['minecraft:ancient_debris', 'minecraft:polished_blackstone'],
+  ['minecraft:observer', 'minecraft:light_gray_concrete'],
+  ['minecraft:dispenser', 'minecraft:smooth_stone'],
+  ['minecraft:dropper', 'minecraft:smooth_stone'],
+  ['minecraft:piston', 'minecraft:smooth_stone'],
+  ['minecraft:sticky_piston', 'minecraft:smooth_stone'],
+  ['minecraft:hopper', 'minecraft:iron_block'],
+  ['minecraft:redstone_block', 'minecraft:red_concrete'],
+  ['minecraft:redstone_lamp', 'minecraft:sea_lantern'],
+  ['minecraft:command_block', 'minecraft:smooth_quartz'],
+  ['minecraft:chain_command_block', 'minecraft:smooth_quartz'],
+  ['minecraft:repeating_command_block', 'minecraft:smooth_quartz'],
+  ['minecraft:structure_block', 'minecraft:smooth_quartz'],
+  ['minecraft:jigsaw', 'minecraft:smooth_quartz'],
+  ['minecraft:barrier', 'minecraft:smooth_stone'],
+  ['minecraft:bedrock', 'minecraft:stone'],
+  ['minecraft:lava', 'minecraft:smooth_stone'],
+  ['minecraft:fire', 'minecraft:smooth_stone'],
+  ['minecraft:soul_fire', 'minecraft:smooth_stone']
+]);
+
 const config = {
   mode: argValue('--mode') || process.env.MUSEUM_BUILDER_MODE || 'loop',
   dryRun: hasArg('--dry-run') || process.env.MUSEUM_DRY_RUN === '1',
@@ -88,6 +129,7 @@ const config = {
   emptyHoldMs: positiveInteger(process.env.MUSEUM_EMPTY_HOLD_MS, 10000),
   phaseSpacingMs: positiveInteger(process.env.MUSEUM_PHASE_SPACING_MS, 30000),
   rconTimeoutMs: positiveInteger(process.env.MUSEUM_RCON_TIMEOUT_MS, 30000),
+  streamInterval: positiveInteger(process.env.MUSEUM_STREAM_INTERVAL, 500),
   saveAfterRestore: process.env.MUSEUM_SAVE_AFTER_RESTORE !== '0'
 };
 
@@ -152,7 +194,7 @@ async function loadOtsBlocks(filePath) {
     offset += 4;
     const rawState = raw.subarray(offset, offset + stateLength).toString('utf8');
     offset += stateLength;
-    palette.set(blockId, GRAVITY_REPLACEMENTS.get(rawState) || rawState);
+    palette.set(blockId, cleanState(GRAVITY_REPLACEMENTS.get(rawState) || rawState));
   }
 
   const recordCount = readUInt32LE(raw, offset);
@@ -170,6 +212,20 @@ async function loadOtsBlocks(filePath) {
     }
   }
   return blocks;
+}
+
+function cleanState(rawState) {
+  const blockName = rawState.split('[', 1)[0];
+  if (CLEAN_REPLACEMENTS.has(blockName)) {
+    return CLEAN_REPLACEMENTS.get(blockName);
+  }
+  if (/^minecraft:.*_(button|pressure_plate|trapdoor|door|fence_gate)(\[.*)?$/.test(rawState)) {
+    return 'minecraft:smooth_stone';
+  }
+  if (/^minecraft:(redstone_wire|repeater|comparator|lever|tripwire|tripwire_hook)(\[.*)?$/.test(rawState)) {
+    return 'minecraft:smooth_stone';
+  }
+  return rawState;
 }
 
 function translateBlocks(exhibit, blocks, baseY) {
@@ -227,6 +283,17 @@ function forceloadCommand(exhibit, action) {
 
 function tellraw(text, color = 'gold') {
   return `tellraw @a ${JSON.stringify({ text, color })}`;
+}
+
+function streamMessage(exhibit, modeLabel, placed, total) {
+  const sign = modeLabel === 'build' || modeLabel === 'restore' ? '+' : '-';
+  const action = modeLabel === 'build'
+    ? 'building'
+    : modeLabel === 'restore'
+      ? 'restoring'
+      : 'dissolving';
+  const color = sign === '+' ? 'green' : 'red';
+  return tellraw(`[SAM Museum] ${sign} ${exhibit.title}: ${action} ${placed}/${total}`, color);
 }
 
 class RconClient {
@@ -413,6 +480,9 @@ async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverr
     placed += batch.length;
     if (placed % 1000 < config.batchSize) {
       console.log(`${modeLabel} ${exhibit.id}: ${placed}/${blocks.length}`);
+    }
+    if (placed % config.streamInterval < config.batchSize || placed === blocks.length) {
+      await rcon.send(streamMessage(exhibit, modeLabel, placed, blocks.length));
     }
   }
 }

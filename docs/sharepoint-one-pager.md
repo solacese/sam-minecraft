@@ -1,23 +1,27 @@
-# SAM Minecraft Museum One-Pager
+# SAM Minecraft Museum
 
-## Quick Links
+## Links
 
 | Resource | Address |
 |---|---|
-| Museum website | `https://raphael-solace.github.io/sam-minecraft-museum/` |
-| Agent chat | In-game on the Minecraft server |
-| Minecraft Java server | `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565` |
-| Request a new model | Use the request form on the museum website |
+| Website | `https://raphael-solace.github.io/sam-minecraft-museum/` |
+| Minecraft server | `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565` |
+| Agent chat | In-game chat |
+| Requests | Use the website request form |
 
-The current AWS Elastic IP is `16.54.209.252`.
+## What It Is
 
-## What This Is
+A live Minecraft Java museum where AI guide agents explain famous landmarks as they rebuild block by block.
 
-SAM Minecraft Museum is a live demonstration of multiple AI agents coordinating to build complex structures in Minecraft. Visitors can watch recordings, join the persistent Minecraft world, chat with museum guide agents, watch landmarks continuously dissolve and rebuild block by block, and request future landmarks.
+Visitors can:
 
-The important idea is not just that blocks appear in Minecraft. The demo shows an agent team coordinating specialized roles: an orchestrator, site planner, structural builder, landmark specialist, materials specialist, and landscaper. The activity stream makes the teamwork visible while trusted build tools keep the world controlled. The hosted museum runs in a normal non-flat world, with landmark exhibits grounded into the terrain and animated by a rate-limited builder loop.
+- Join the server in Minecraft Java 1.21.4.
+- Fly around in creative mode.
+- Watch six landmarks dissolve and rebuild live.
+- Talk to guide agents in chat.
+- Request future landmarks.
 
-## Current Featured Builds
+## Current Landmarks
 
 - Munich Famous Building
 - Eiffel Tower
@@ -26,24 +30,18 @@ The important idea is not just that blocks appear in Minecraft. The demo shows a
 - Saint Basil's Cathedral
 - NY Chrysler Building
 
-## 90-Second Talk Track
+## Talk Track
 
-“This is the SAM Minecraft Museum, a persistent world where AI agents collaborate to create complex landmarks. A visitor can ask for a structure, like a famous building in Munich, and the orchestrator breaks the work into visible agent activity. In the live museum, the existing landmark row is kinetic: the same six OTS models repeatedly dissolve from the top down and rebuild from the ground up, block by block.
+“This is the SAM Minecraft Museum. It is a live Minecraft world where AI agents coordinate around landmark builds.
 
-Each agent has a role. One agent reviews the site and visitor flow, another watches structure and staging, another checks landmark fidelity, another handles materials and finishing, and another thinks about landscaping. For public safety, normal visitors talk to read-only guide agents. Actual world mutation is handled by a trusted build runner so the museum stays durable, rate-limited, and recoverable.
+The buildings are not static: they dissolve and rebuild block by block. Visitors can walk or fly around the museum while the guide agents explain what is happening.
 
-The museum has two ways to experience the demo. First, anyone can open the website and watch short recordings of interesting builds. Second, people with Minecraft Java Edition can join the live server and tour the museum world directly. The request form lets visitors propose new landmarks, which go into a queue for review or approved build runs.
-
-This gives us a repeatable way to show multi-agent coordination: planning, delegation, progress updates, controlled execution, and a finished artifact people can walk around in.”
+The demo shows multi-agent coordination in a simple way: planning, specialist roles, live updates, and a finished world people can explore.”
 
 ## How To Join
 
 1. Open Minecraft Java Edition 1.21.4.
 2. Go to Multiplayer.
 3. Add server: `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
-4. Join the world and start at the museum spawn.
-5. Watch the landmark row cycle through dissolve and rebuild phases, then use the museum website for recordings and requests.
-
-## Safety Model
-
-Public visitors can chat, tour, request, and currently join in creative mode for filming and hands-on exploration. Reviewed build requests are still queued and rate-limited for coordinated agent demos. The live museum loop only edits known OTS landmark block coordinates; paths, terrain, markers, spawn, and agents are outside the animation scope. The live museum world should have snapshots so it can be restored if a build fails.
+4. Join the world.
+5. Ask the guide agents for a tour.

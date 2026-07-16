@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="SAM Minecraft Museum: multi-agent AI teams coordinating to build complex structures in Minecraft.">
+    <meta name="description" content="SAM Minecraft Museum: a live Minecraft world where AI agents guide visitors through landmark builds.">
     <title>SAM Minecraft Museum</title>
     <link rel="stylesheet" href="assets/museum.css">
   </head>
@@ -24,15 +24,15 @@
     <main id="top">
       <section class="museum-dashboard" aria-labelledby="museum-title">
         <div class="intro">
-          <p class="eyebrow">Live Minecraft world + AI agent showcase</p>
-          <h1 id="museum-title">Landmarks continuously built by coordinating AI agents</h1>
+          <p class="eyebrow">Live Minecraft world</p>
+          <h1 id="museum-title">SAM Minecraft Museum</h1>
           <p class="lede">
-            Join the persistent museum server to watch six OTS landmark models dissolve and
-            rebuild block by block while guide agents narrate the coordination.
+            Join a live museum where famous landmarks rebuild block by block and guide agents
+            explain what is happening.
           </p>
           <div class="actions">
-            <a class="button primary" href="#recordings">Watch recordings</a>
-            <a class="button" href="#visit">Join the server</a>
+            <a class="button primary" href="#visit">Join the server</a>
+            <a class="button" href="#recordings">Watch recordings</a>
           </div>
         </div>
 
@@ -60,7 +60,7 @@
             <p class="eyebrow">Film room</p>
             <h2 id="recordings-title">Featured build recordings</h2>
           </div>
-          <p>Replace the placeholder URLs in <code>docs/data/museum.json</code> with six public YouTube links.</p>
+          <p>Short videos from previous landmark builds.</p>
         </div>
         <div id="recording-grid" class="recording-grid" aria-live="polite"></div>
       </section>
@@ -68,11 +68,10 @@
       <section id="visit" class="section split" aria-labelledby="visit-title">
         <div>
           <p class="eyebrow">Live museum</p>
-          <h2 id="visit-title">Join the durable Minecraft world</h2>
+          <h2 id="visit-title">Join the server</h2>
           <p>
-            The hosted world is a curated landmark museum. Visitors can tour the structures, watch
-            agents in chat, and see the same OTS models being rebuilt in a rate-limited loop.
-            Public agents are read-only by default; trusted build jobs run through controlled scripts.
+            Use Minecraft Java Edition 1.21.4. You can fly around in creative mode, watch the
+            landmarks rebuild, and talk to the guide agents in chat.
           </p>
         </div>
         <div class="visit-card">
@@ -97,7 +96,7 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Museum map</p>
-            <h2 id="landmarks-title">Live dynamic landmark collection</h2>
+            <h2 id="landmarks-title">Six live landmarks</h2>
           </div>
         </div>
         <div id="landmark-grid" class="landmark-grid" aria-live="polite"></div>
@@ -107,11 +106,10 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">Activity tab</p>
-            <h2 id="agents-title">How the agents coordinate</h2>
+            <h2 id="agents-title">Talk to the agents</h2>
           </div>
           <p>
-            The orchestrator splits planning, site review, materials, structure, detailing, and
-            landscaping into visible agent tasks before a trusted builder mutates the world.
+            Ask for a tour, a landmark, or what the builders are doing now.
           </p>
         </div>
         <div id="agent-grid" class="agent-grid" aria-live="polite"></div>
@@ -120,10 +118,9 @@
       <section id="request" class="section request-section" aria-labelledby="request-title">
         <div>
           <p class="eyebrow">Request queue</p>
-          <h2 id="request-title">Request a new model or landmark</h2>
+          <h2 id="request-title">Request a landmark</h2>
           <p>
-            Public requests are queued for review. Curated templates can be approved for live
-            builds; free-form model ideas become candidates for future museum recordings.
+            Suggest what the museum should add next.
           </p>
         </div>
         <form id="request-form" class="request-form">
@@ -137,7 +134,7 @@
           </label>
           <label>
             What should the agents build or explain?
-            <textarea name="description" rows="5" required placeholder="Describe the structure, style, location, and any recording goal."></textarea>
+            <textarea name="description" rows="4" required placeholder="Add a short description or reference link."></textarea>
           </label>
           <button class="button primary" type="submit">Create request</button>
           <p id="request-result" class="form-result" role="status"></p>

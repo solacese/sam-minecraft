@@ -8,12 +8,12 @@
   "minecraft": {
     "host": "ec2-16-54-209-252.ca-central-1.compute.amazonaws.com",
     "port": "25565",
-    "note": "Public Minecraft Java server hosted on AWS. Visitors join a normal, non-flat world in creative mode, talk to guide agents in-game, and watch the six landmark models dissolve and rebuild block by block."
+    "note": "Join with Minecraft Java 1.21.4. Six landmarks rebuild live, and guide agents answer in chat."
   },
   "dynamic": {
-    "status": "Live kinetic exhibit",
-    "cadence": "The same six OTS landmarks stay in their museum positions while a trusted builder unbuilds and rebuilds them in staggered loops.",
-    "speed": "Balanced server-safe animation, capped near 100 individual block edits per second across the museum."
+    "status": "Live build loop",
+    "cadence": "Six landmarks dissolve and rebuild, one block at a time.",
+    "speed": "Rate-limited so the public server stays stable."
   },
   "request": {
     "apiEndpoint": "",
@@ -27,7 +27,7 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A one-shot OTS structure build with visible agent coordination and a centralized trusted builder."
+      "description": "A Munich landmark built with visible agent coordination."
     },
     {
       "title": "Eiffel Tower",
@@ -35,7 +35,7 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A landmark build showing structural planning, staged placement, and progress reporting."
+      "description": "A tall landmark build staged from base to tip."
     },
     {
       "title": "Sydney Opera House",
@@ -43,7 +43,7 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A cinematic imported-model build with bots moving around the active layer perimeter."
+      "description": "An imported model build with agents on patrol."
     },
     {
       "title": "Arc de Triomphe",
@@ -51,7 +51,7 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A high-detail prebuilt GrabCraft model converted into OTS blocks for the public museum."
+      "description": "A high-detail model prepared for the museum."
     },
     {
       "title": "Saint Basil's Cathedral",
@@ -59,7 +59,7 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A colorful high-detail GrabCraft model converted into OTS blocks for visual contrast."
+      "description": "A colorful landmark with strong visual contrast."
     },
     {
       "title": "NY Chrysler Building",
@@ -67,77 +67,77 @@
       "duration": "TBD",
       "youtubeUrl": "",
       "thumbnailUrl": "",
-      "description": "A tall skyline model converted from a prebuilt GrabCraft structure into OTS blocks."
+      "description": "A skyline model with a full-height rebuild."
     }
   ],
   "landmarks": [
     {
       "name": "Munich Famous Building",
       "origin": "0, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "Exact OTS structure placement near spawn, now rebuilt bottom-to-top after each top-down dissolve cycle."
+      "status": "Live loop",
+      "description": "The central museum build near spawn."
     },
     {
       "name": "Eiffel Tower",
       "origin": "95, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "High-detail prebuilt GrabCraft Eiffel model converted into OTS blocks, rebuilt in visible lower-to-upper construction passes."
+      "status": "Live loop",
+      "description": "The Paris tower rebuilds from the lower frame upward."
     },
     {
       "name": "Sydney Opera House",
       "origin": "-200, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "Imported OTS model in the visible front row, far left with a white marker and a staggered rebuild phase."
+      "status": "Live loop",
+      "description": "The Opera House anchors the left side of the museum row."
     },
     {
       "name": "Arc de Triomphe",
       "origin": "-100, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "High-detail prebuilt GrabCraft model converted into OTS blocks, unbuilt only at known model coordinates and rebuilt from the base upward."
+      "status": "Live loop",
+      "description": "The arch dissolves from the top and returns from the base."
     },
     {
       "name": "Saint Basil's Cathedral",
       "origin": "175, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "Colorful prebuilt GrabCraft cathedral model converted into OTS blocks, cycling through visible dissolve and restoration phases."
+      "status": "Live loop",
+      "description": "Colorful domes make this the brightest exhibit."
     },
     {
       "name": "NY Chrysler Building",
       "origin": "255, 0",
-      "status": "Dynamic loop exhibit",
-      "description": "Tall prebuilt GrabCraft skyscraper model converted into OTS blocks, animated carefully because it has the largest block count."
+      "status": "Live loop",
+      "description": "The tallest exhibit in the landmark row."
     }
   ],
   "agents": [
     {
       "name": "OpenAI Orchestrator",
       "role": "Mission control",
-      "activity": "Routes user requests, coordinates agents, and announces each live dissolve and rebuild phase."
+      "activity": "Introduces the tour and keeps the agents aligned."
     },
     {
       "name": "Design Dora",
       "role": "Site planner",
-      "activity": "Reviews site layout, paths, plaza framing, visitor flow, and safe viewing positions during animation."
+      "activity": "Watches paths, viewing angles, and visitor flow."
     },
     {
       "name": "Build Bea",
       "role": "Structure specialist",
-      "activity": "Monitors staging, lower layers, framing, walls, roofs, and bottom-to-top rebuild order."
+      "activity": "Tracks the block-by-block rebuild order."
     },
     {
       "name": "Monument Marc",
       "role": "Landmark fidelity",
-      "activity": "Checks imported landmark silhouette, masonry, recognizable details, and final restored profiles."
+      "activity": "Checks whether each landmark still looks right."
     },
     {
       "name": "Supply Sid",
       "role": "Materials and finish",
-      "activity": "Tracks palette, utilities, glazing, and whether each restored block matches the OTS source."
+      "activity": "Watches colors, glass, stone, and finishes."
     },
     {
       "name": "Forest Finn",
       "role": "Landscape",
-      "activity": "Watches exterior paths, garden edges, greenery, and cleanup while the landmark blocks animate."
+      "activity": "Keeps the grounds and viewing areas tidy."
     }
   ]
 }
