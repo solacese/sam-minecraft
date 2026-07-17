@@ -586,7 +586,6 @@ async function sendBlockBatch(rcon, limiter, commands) {
 
 async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null, context = {}) {
   let placed = 0;
-  let midpointSent = false;
   for (let index = 0; index < blocks.length; index += config.batchSize) {
     const batch = blocks.slice(index, index + config.batchSize)
       .map((block) => setblockCommand(block, stateOverride || block.state));
@@ -595,11 +594,8 @@ async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverr
     if (placed % 1000 < config.batchSize) {
       console.log(`${modeLabel} ${exhibit.id}: ${placed}/${blocks.length}`);
     }
-    if (!midpointSent && placed >= Math.floor(blocks.length / 2)) {
-      midpointSent = true;
-      await rcon.send(streamMessage(exhibit, modeLabel, placed, blocks.length));
-    }
   }
+  return placed;
 }
 
 async function restoreOnce(rcon, exhibits) {
@@ -646,10 +642,13 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
       nextTitle
     });
     await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} dissolving.`, 'yellow'));
-    await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air', {
+    const unbuilt = await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air', {
       phase: 'Dissolving',
       nextTitle
     });
+    if (unbuilt !== exhibit.blockCount) {
+      throw new Error(`Unbuild did not finish: ${unbuilt}/${exhibit.blockCount}`);
+    }
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Pause',
@@ -663,10 +662,13 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
       nextTitle
     });
     await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} rebuilding.`, 'aqua'));
-    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build', null, {
+    const built = await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build', null, {
       phase: 'Rebuilding',
       nextTitle
     });
+    if (built !== exhibit.blockCount) {
+      throw new Error(`Build did not finish: ${built}/${exhibit.blockCount}`);
+    }
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Complete',
@@ -675,14 +677,27 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
     await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} complete.`, 'green'));
     await rcon.send(forceloadCommand(exhibit, 'remove'));
     await sleep(config.builtHoldMs);
+    return true;
   } catch (error) {
     console.error(`Animation cycle failed for ${exhibit.title}:`, error);
     try {
+      await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} paused; restoring before retry.`, 'red'));
+      await updateSidebar(rcon, {
+        exhibit,
+        phase: 'Restoring',
+        nextTitle
+      });
+      await rcon.send(forceloadCommand(exhibit, 'add'));
+      const restored = await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'restore');
+      if (restored !== exhibit.blockCount) {
+        console.error(`Restore did not finish for ${exhibit.title}: ${restored}/${exhibit.blockCount}`);
+      }
       await rcon.send(forceloadCommand(exhibit, 'remove'));
-    } catch (forceloadError) {
-      console.error(`Failed to remove forceload for ${exhibit.title}:`, forceloadError);
+    } catch (restoreError) {
+      console.error(`Failed to restore/clear forceload for ${exhibit.title}:`, restoreError);
     }
     await sleep(15000);
+    return false;
   }
 }
 
@@ -695,7 +710,9 @@ async function loop(rcon, exhibits) {
     for (let index = 0; index < exhibits.length; index += 1) {
       const exhibit = exhibits[index];
       const next = exhibits[(index + 1) % exhibits.length];
-      await runExhibitCycle(rcon, limiter, exhibit, next.title, cycleCount);
+      while (!(await runExhibitCycle(rcon, limiter, exhibit, next.title, cycleCount))) {
+        console.warn(`Retrying ${exhibit.title}; museum will not advance until this exhibit is restored and rebuilt.`);
+      }
       cycleCount += 1;
     }
   }

@@ -2,7 +2,7 @@ import mineflayer from 'mineflayer';
 
 const host = process.env.MC_HOST || 'localhost';
 const port = Number(process.env.MC_PORT || 25565);
-const CHATTER_LINES_PER_AGENT = Number(process.env.AGENT_CHATTER_LINES || 10);
+const CHATTER_LINES_PER_AGENT = Number(process.env.AGENT_CHATTER_LINES || 0);
 const CHATTER_INTERVAL_MS = Number(process.env.AGENT_CHATTER_INTERVAL_MS || 30000);
 const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
@@ -360,7 +360,7 @@ function createAgent(agent, index) {
     port,
     username: agent.username,
     version: '1.21.4',
-    hideErrors: false
+    hideErrors: true
   });
 
   bot.once('spawn', async () => {
@@ -410,6 +410,9 @@ function createAgent(agent, index) {
   });
   bot.on('end', reconnect);
   bot.on('error', (error) => {
+    if (error?.code === 'ECONNRESET' || /ECONNRESET|socket closed|write after end/i.test(error?.message || '')) {
+      return;
+    }
     console.error(`${agent.username} error`, error.message);
   });
 }
