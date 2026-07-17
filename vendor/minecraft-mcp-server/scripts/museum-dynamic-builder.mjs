@@ -130,7 +130,19 @@ const config = {
   phaseSpacingMs: positiveInteger(process.env.MUSEUM_PHASE_SPACING_MS, 0),
   rconTimeoutMs: positiveInteger(process.env.MUSEUM_RCON_TIMEOUT_MS, 30000),
   streamInterval: positiveInteger(process.env.MUSEUM_STREAM_INTERVAL, 500),
+  showCountdownSeconds: positiveInteger(process.env.MUSEUM_SHOW_COUNTDOWN_SECONDS, 20),
   saveAfterRestore: process.env.MUSEUM_SAVE_AFTER_RESTORE !== '0'
+};
+
+const GUIDE_AGENT_COUNT = 6;
+const REQUEST_BOARD = {
+  x1: -26,
+  y1: 78,
+  z1: -224,
+  x2: -9,
+  y2: 84,
+  z2: -224,
+  facing: 'south'
 };
 
 function argValue(name) {
@@ -285,6 +297,35 @@ function tellraw(text, color = 'gold') {
   return `tellraw @a ${JSON.stringify({ text, color })}`;
 }
 
+function titleCommand(kind, text, color = 'gold') {
+  return `title @a ${kind} ${JSON.stringify({ text, color })}`;
+}
+
+function scoreHolder(text) {
+  return text
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_:#/%.-]/g, '')
+    .slice(0, 40);
+}
+
+function shortTitle(exhibitOrTitle) {
+  const title = typeof exhibitOrTitle === 'string' ? exhibitOrTitle : exhibitOrTitle.title;
+  return title
+    .replace('Sydney Opera House', 'Sydney')
+    .replace('Arc de Triomphe', 'Arc')
+    .replace('Munich Famous Building', 'Munich')
+    .replace('Eiffel Tower', 'Eiffel')
+    .replace("Saint Basil's Cathedral", 'Saint Basil')
+    .replace('NY Chrysler Building', 'Chrysler');
+}
+
+function formatCount(value) {
+  if (value >= 1000) {
+    return `${Math.round(value / 100) / 10}k`;
+  }
+  return String(value);
+}
+
 function streamMessage(exhibit, modeLabel, placed, total) {
   const sign = modeLabel === 'build' || modeLabel === 'restore' ? '+' : '-';
   const action = modeLabel === 'build'
@@ -416,6 +457,87 @@ class RateLimiter {
   }
 }
 
+async function setupSidebar(rcon) {
+  await rcon.send('scoreboard objectives remove sam_museum');
+  await rcon.send('scoreboard objectives add sam_museum dummy "SAM Museum"');
+  await rcon.send('scoreboard objectives setdisplay sidebar sam_museum');
+}
+
+async function updateSidebar(rcon, {
+  exhibit = null,
+  phase = 'Idle',
+  placed = 0,
+  total = 0,
+  nextTitle = 'loading',
+  cycleCount = 0
+} = {}) {
+  const now = exhibit ? shortTitle(exhibit) : 'loading';
+  const pct = total > 0 ? `${Math.floor((placed / total) * 100)}%` : '0%';
+  const lines = [
+    ['SAM Museum', 90],
+    [`Now: ${now}`, 80],
+    [`Phase: ${phase}`, 70],
+    [`Progress: ${pct} ${formatCount(placed)}/${formatCount(total)}`, 60],
+    [`Next: ${shortTitle(nextTitle)}`, 50],
+    [`Agents: ${GUIDE_AGENT_COUNT} guides`, 40],
+    [`Show #: ${cycleCount}`, 30],
+    ['Type: tour', 20],
+    ['Request board: spawn', 10]
+  ];
+  await rcon.send('scoreboard players reset * sam_museum');
+  for (const [label, score] of lines) {
+    await rcon.send(`scoreboard players set ${scoreHolder(label)} sam_museum ${score}`);
+  }
+}
+
+function signMessages(lines) {
+  const padded = [...lines, '', '', '', ''].slice(0, 4);
+  return padded.map((line) => JSON.stringify(JSON.stringify({ text: line }))).join(',');
+}
+
+async function setupRequestBoard(rcon) {
+  const { x1, y1, z1, x2, y2, z2, facing } = REQUEST_BOARD;
+  await rcon.send(`fill ${x1} ${y1} ${z1} ${x2} ${y2} ${z2} minecraft:dark_oak_planks`);
+  await rcon.send(`fill ${x1 + 1} ${y1 + 1} ${z1 + 1} ${x2 - 1} ${y1 + 1} ${z1 + 5} minecraft:smooth_quartz`);
+  await rcon.send('kill @e[type=minecraft:text_display,tag=sam_request_board]');
+
+  const signs = [
+    { x: -24, y: 82, lines: ['SAM Museum', 'Request Board', 'Vote for the', 'next landmark'] },
+    { x: -20, y: 82, lines: ['Type request', 'in chat or use', 'the visit page', 'from the site'] },
+    { x: -16, y: 82, lines: ['Shows run', 'one landmark', 'at a time', 'block by block'] },
+    { x: -12, y: 82, lines: ['Try: tour', 'Ask agents', 'Watch sidebar', 'Explore freely'] }
+  ];
+
+  for (const sign of signs) {
+    await rcon.send(`setblock ${sign.x} ${sign.y} ${z1 + 1} minecraft:oak_wall_sign[facing=${facing}]`);
+    await rcon.send(
+      `data merge block ${sign.x} ${sign.y} ${z1 + 1} ` +
+      `{front_text:{messages:[${signMessages(sign.lines)}]}}`
+    );
+  }
+
+  await rcon.send(
+    `summon minecraft:text_display -18 84 ${z1 + 2} ` +
+    `{Tags:["sam_request_board"],text:'${JSON.stringify({ text: 'Suggest the next landmark: use the museum page or type request in chat.', color: 'aqua' })}',` +
+    'billboard:"center",background:0,see_through:1b}'
+  );
+}
+
+async function setupVisitorFeatures(rcon, exhibits) {
+  await rcon.send('gamerule sendCommandFeedback false');
+  await rcon.send('gamerule logAdminCommands false');
+  await setupSidebar(rcon);
+  await updateSidebar(rcon, {
+    exhibit: exhibits[0],
+    phase: 'Booting',
+    placed: 0,
+    total: exhibits[0]?.blockCount ?? 0,
+    nextTitle: exhibits[1]?.title ?? 'Sydney'
+  });
+  await setupRequestBoard(rcon);
+  await rcon.send(tellraw('[SAM Museum] Visitor features online: sidebar status, guided tour command, request board, and scheduled shows.', 'gold'));
+}
+
 class SlotLimiter {
   constructor(maxActive) {
     this.maxActive = maxActive;
@@ -471,7 +593,7 @@ async function sendBlockBatch(rcon, limiter, commands) {
   }
 }
 
-async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null) {
+async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null, context = {}) {
   let placed = 0;
   for (let index = 0; index < blocks.length; index += config.batchSize) {
     const batch = blocks.slice(index, index + config.batchSize)
@@ -483,17 +605,30 @@ async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverr
     }
     if (placed % config.streamInterval < config.batchSize || placed === blocks.length) {
       await rcon.send(streamMessage(exhibit, modeLabel, placed, blocks.length));
+      await updateSidebar(rcon, {
+        exhibit,
+        phase: context.phase ?? modeLabel,
+        placed,
+        total: blocks.length,
+        nextTitle: context.nextTitle ?? 'pending',
+        cycleCount: context.cycleCount ?? 0
+      });
     }
   }
 }
 
 async function restoreOnce(rcon, exhibits) {
   const limiter = new RateLimiter(config.blocksPerSecond);
+  await setupVisitorFeatures(rcon, exhibits);
   await rcon.send(tellraw('[SAM Museum] Restoring all landmark models to their complete static state.', 'gold'));
   for (const exhibit of exhibits) {
     console.log(`Restoring ${exhibit.title}: ${exhibit.blockCount} blocks`);
     await rcon.send(forceloadCommand(exhibit, 'add'));
-    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'restore');
+    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'restore', null, {
+      phase: 'Restoring',
+      nextTitle: 'complete',
+      cycleCount: 0
+    });
     await rcon.send(forceloadCommand(exhibit, 'remove'));
   }
   if (config.saveAfterRestore) {
@@ -502,16 +637,99 @@ async function restoreOnce(rcon, exhibits) {
   await rcon.send(tellraw('[SAM Museum] Static landmark restore complete.', 'green'));
 }
 
-async function runExhibitCycle(rcon, limiter, exhibit) {
+async function announceShowCountdown(rcon, exhibit, nextTitle, cycleCount) {
+  if (config.showCountdownSeconds <= 0) {
+    return;
+  }
+  await updateSidebar(rcon, {
+    exhibit,
+    phase: `Show in ${config.showCountdownSeconds}s`,
+    placed: 0,
+    total: exhibit.blockCount,
+    nextTitle,
+    cycleCount
+  });
+  await rcon.send(tellraw(`[SAM Museum] Scheduled show ${cycleCount}: ${exhibit.title} starts in ${config.showCountdownSeconds} seconds. Type "tour" for a guided route.`, 'gold'));
+  await rcon.send(titleCommand('title', 'Next SAM Museum Show', 'gold'));
+  await rcon.send(titleCommand('subtitle', `${exhibit.title} starts soon`, 'yellow'));
+  if (config.showCountdownSeconds > 10) {
+    await sleep((config.showCountdownSeconds - 10) * 1000);
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} starts in 10 seconds.`, 'yellow'));
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Show in 10s',
+      placed: 0,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
+    await sleep(5000);
+    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} starts in 5 seconds.`, 'red'));
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Show in 5s',
+      placed: 0,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
+    await sleep(5000);
+  } else {
+    await sleep(config.showCountdownSeconds * 1000);
+  }
+}
+
+async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
   try {
     console.log(`Starting animation cycle for ${exhibit.title}`);
+    await announceShowCountdown(rcon, exhibit, nextTitle, cycleCount);
     await rcon.send(forceloadCommand(exhibit, 'add'));
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Dissolving',
+      placed: 0,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
     await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is dissolving block by block.`, 'yellow'));
-    await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air');
+    await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air', {
+      phase: 'Dissolving',
+      nextTitle,
+      cycleCount
+    });
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Empty hold',
+      placed: exhibit.blockCount,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
     await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is cleared. Rebuild starts shortly.`, 'gray'));
     await sleep(config.emptyHoldMs);
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Rebuilding',
+      placed: 0,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
     await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is rebuilding from lower layers upward.`, 'aqua'));
-    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build');
+    await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build', null, {
+      phase: 'Rebuilding',
+      nextTitle,
+      cycleCount
+    });
+    await updateSidebar(rcon, {
+      exhibit,
+      phase: 'Complete',
+      placed: exhibit.blockCount,
+      total: exhibit.blockCount,
+      nextTitle,
+      cycleCount
+    });
     await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is complete again.`, 'green'));
     await rcon.send(forceloadCommand(exhibit, 'remove'));
     await sleep(config.builtHoldMs);
@@ -527,13 +745,16 @@ async function runExhibitCycle(rcon, limiter, exhibit) {
 }
 
 async function loop(rcon, exhibits) {
-  await rcon.send('gamerule sendCommandFeedback false');
-  await rcon.send('gamerule logAdminCommands false');
+  await setupVisitorFeatures(rcon, exhibits);
   await rcon.send(tellraw('[SAM Museum] Sequential build loop online: one landmark dissolves and rebuilds at a time.', 'gold'));
   const limiter = new RateLimiter(config.blocksPerSecond);
+  let cycleCount = 1;
   while (true) {
-    for (const exhibit of exhibits) {
-      await runExhibitCycle(rcon, limiter, exhibit);
+    for (let index = 0; index < exhibits.length; index += 1) {
+      const exhibit = exhibits[index];
+      const next = exhibits[(index + 1) % exhibits.length];
+      await runExhibitCycle(rcon, limiter, exhibit, next.title, cycleCount);
+      cycleCount += 1;
     }
   }
 }

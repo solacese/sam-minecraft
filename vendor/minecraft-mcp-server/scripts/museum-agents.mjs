@@ -6,6 +6,8 @@ const CHATTER_LINES_PER_AGENT = 50;
 const CHATTER_INTERVAL_MS = 6500;
 const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
+const TOUR_STOP_PAUSE_MS = 9000;
+const MUSEUM_PAGE_URL = 'https://raphael-solace.github.io/sam-minecraft-museum/#visit';
 
 const waypoints = [
   { label: 'spawn overlook', x: 0, z: -210 },
@@ -22,14 +24,30 @@ const agents = [
     username: 'OrchGuide_o11',
     label: 'Orchestrator',
     role: 'museum guide and live build mission control',
+    model: 'Claude 4.5 Sonnet',
+    badge: 'ORCH',
+    team: 'sam_orch',
+    teamColor: 'gold',
+    armor: {
+      head: 'minecraft:golden_helmet',
+      chest: 'minecraft:golden_chestplate'
+    },
     home: { x: 0, z: -210 },
     aliases: ['orchestrator', 'orch', 'guide', 'agent', 'sam'],
-    topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat', 'dynamic', 'loop']
+    topics: ['tour', 'help', 'agents', 'museum', 'where', 'alive', 'chat', 'dynamic', 'loop', 'request', 'vote']
   },
   {
     username: 'DesignDora_l4s',
     label: 'Design Dora',
     role: 'site planner',
+    model: 'Claude 4.5 Haiku',
+    badge: 'SITE',
+    team: 'sam_design',
+    teamColor: 'light_purple',
+    armor: {
+      head: 'minecraft:chainmail_helmet',
+      chest: 'minecraft:chainmail_chestplate'
+    },
     home: { x: -16, z: -210 },
     aliases: ['dora', 'design', 'planner'],
     topics: ['site', 'path', 'plaza', 'layout', 'route', 'spawn']
@@ -38,6 +56,14 @@ const agents = [
     username: 'BuildBea_l33',
     label: 'Build Bea',
     role: 'structure specialist',
+    model: 'Claude 4.5 Sonnet',
+    badge: 'BUILD',
+    team: 'sam_build',
+    teamColor: 'blue',
+    armor: {
+      head: 'minecraft:diamond_helmet',
+      chest: 'minecraft:diamond_chestplate'
+    },
     home: { x: -8, z: -210 },
     aliases: ['bea', 'build', 'builder'],
     topics: ['structure', 'layers', 'tower', 'build', 'blocks', 'height', 'rebuild', 'unbuild', 'dissolve']
@@ -46,6 +72,14 @@ const agents = [
     username: 'MonumentMarc_m9',
     label: 'Monument Marc',
     role: 'landmark fidelity specialist',
+    model: 'Claude 4.5 Sonnet',
+    badge: 'FIDEL',
+    team: 'sam_fidelity',
+    teamColor: 'gray',
+    armor: {
+      head: 'minecraft:iron_helmet',
+      chest: 'minecraft:iron_chestplate'
+    },
     home: { x: 0, z: -210 },
     aliases: ['marc', 'monument'],
     topics: ['munich', 'eiffel', 'sydney', 'arc', 'triumph', 'basil', 'cathedral', 'chrysler', 'landmark', 'silhouette', 'model']
@@ -54,6 +88,14 @@ const agents = [
     username: 'SupplySid_l31',
     label: 'Supply Sid',
     role: 'materials and finishing specialist',
+    model: 'Claude 4.5 Sonnet',
+    badge: 'MAT',
+    team: 'sam_supply',
+    teamColor: 'yellow',
+    armor: {
+      head: 'minecraft:golden_helmet',
+      chest: 'minecraft:chainmail_chestplate'
+    },
     home: { x: 8, z: -210 },
     aliases: ['sid', 'supply', 'materials'],
     topics: ['materials', 'palette', 'finish', 'glass', 'marker', 'beacon']
@@ -62,11 +104,66 @@ const agents = [
     username: 'ForestFinn_q32',
     label: 'Forest Finn',
     role: 'landscaping specialist',
+    model: 'Claude 4.5 Haiku',
+    badge: 'LAND',
+    team: 'sam_forest',
+    teamColor: 'green',
+    armor: {
+      head: 'minecraft:turtle_helmet',
+      chest: 'minecraft:leather_chestplate'
+    },
     home: { x: 16, z: -210 },
     aliases: ['finn', 'forest', 'landscape'],
     topics: ['landscape', 'garden', 'trees', 'outside', 'terrain', 'ground']
   }
 ];
+
+const tourStops = [
+  {
+    label: 'Spawn overlook',
+    x: 0,
+    z: -210,
+    line: 'This is the live control balcony: watch the sidebar for the active show and the chat for the event stream.'
+  },
+  {
+    label: 'Sydney Opera House',
+    x: -200,
+    z: -52,
+    line: 'Sydney anchors the west end with a white marker and curved OTS profile.'
+  },
+  {
+    label: 'Arc de Triomphe',
+    x: -100,
+    z: -52,
+    line: 'The Arc shows the top-down dissolve and bottom-up rebuild pattern clearly.'
+  },
+  {
+    label: 'Munich Famous Building',
+    x: 8,
+    z: -52,
+    line: 'Munich is the central origin exhibit and the easiest reference point for the row.'
+  },
+  {
+    label: 'Eiffel Tower',
+    x: 95,
+    z: -52,
+    line: 'Eiffel is a tall model, so the layer-by-layer rebuild is visible from far away.'
+  },
+  {
+    label: "Saint Basil's and Chrysler",
+    x: 215,
+    z: -52,
+    line: 'The east end contrasts colorful domes with the tallest skyline model.'
+  },
+  {
+    label: 'Request board',
+    x: -18,
+    z: -219,
+    line: `Use the request board near spawn or visit ${MUSEUM_PAGE_URL} to suggest the next exhibit.`
+  }
+];
+
+const activeTours = new Set();
 
 const agentNames = new Set(agents.map((agent) => agent.username.toLowerCase()));
 const chatterTemplates = [
@@ -128,16 +225,19 @@ function shouldRespond(agent, message) {
 function responseFor(agent, username, message) {
   const text = normalize(message);
   if (text.includes('tour') || text.includes('where')) {
-    return `${username}, look south from the glass overlook: Sydney, Arc de Triomphe, Munich, Eiffel, Saint Basil's, and Chrysler are arranged left to right in one close OTS model row.`;
+    return `${username}, say "tour" and I will move you through the museum stops. From the overlook, the row is Sydney, Arc, Munich, Eiffel, Saint Basil's, then Chrysler.`;
   }
   if (text.includes('agents') || text.includes('help') || text.includes('team')) {
-    return `${username}, we are six guide agents. We answer chat, patrol waypoints, and narrate the live build loop while a trusted builder edits the landmark blocks.`;
+    return `${username}, six guide agents are online: Orchestrator (${agents[0].model}), Design Dora (${agents[1].model}), Build Bea (${agents[2].model}), Monument Marc (${agents[3].model}), Supply Sid (${agents[4].model}), and Forest Finn (${agents[5].model}).`;
   }
   if (text.includes('alive') || text.includes('move') || text.includes('walking')) {
     return `${username}, each guide is cycling through exhibit waypoints while the six landmarks dissolve and rebuild in staggered phases.`;
   }
   if (text.includes('dynamic') || text.includes('loop') || text.includes('rebuild') || text.includes('unbuild') || text.includes('dissolve')) {
-    return `${username}, the museum is kinetic now: two landmarks can animate at once, capped near 100 block edits per second, with unbuilds top-down and rebuilds bottom-up.`;
+    return `${username}, the museum is kinetic now: one landmark runs as a scheduled show at a time, capped at a stable edit rate, with unbuilds top-down and rebuilds bottom-up.`;
+  }
+  if (text.includes('request') || text.includes('vote') || text.includes('next landmark')) {
+    return `${username}, the request board is beside spawn. You can also use ${MUSEUM_PAGE_URL} to suggest the next landmark for the museum.`;
   }
   if (text.includes('munich')) {
     return `${username}, Munich is the large OTS flagship at the origin, centered in the visible row.`;
@@ -163,7 +263,7 @@ function responseFor(agent, username, message) {
   if (text.includes('build')) {
     return `${username}, public visitors can explore in creative mode; the landmark row is rebuilt block by block by a controlled worker while we coordinate the story in chat.`;
   }
-  return `${username}, I am ${agent.label}, the ${agent.role}. Say a landmark name or ask for a tour and I will route you.`;
+  return `${username}, I am ${agent.label}, the ${agent.role}, running on ${agent.model}. Say a landmark name, "tour", or "request".`;
 }
 
 function chatterLine(agent, lineNumber, agentIndex) {
@@ -199,6 +299,61 @@ async function startMovement(bot, agent, index, isActive) {
   }
 }
 
+function chatComponent(text, color) {
+  return JSON.stringify({ text, color });
+}
+
+function isSafePlayerName(username) {
+  return /^[A-Za-z0-9_]{1,16}$/.test(username);
+}
+
+async function styleAgent(bot, agent) {
+  for (const current of agents) {
+    bot.chat(`/team add ${current.team}`);
+    await sleep(70);
+    bot.chat(`/team modify ${current.team} color ${current.teamColor}`);
+    await sleep(70);
+    bot.chat(`/team modify ${current.team} prefix ${chatComponent(`[${current.badge}] `, current.teamColor)}`);
+    await sleep(70);
+  }
+  bot.chat(`/team join ${agent.team} ${agent.username}`);
+  await sleep(100);
+  bot.chat(`/item replace entity ${agent.username} armor.head with ${agent.armor.head}`);
+  await sleep(100);
+  bot.chat(`/item replace entity ${agent.username} armor.chest with ${agent.armor.chest}`);
+}
+
+async function runTour(bot, username) {
+  if (!isSafePlayerName(username)) {
+    bot.chat(`${username}, I can only start the guided tour for standard Minecraft usernames.`);
+    return;
+  }
+  if (activeTours.has(username)) {
+    bot.chat(`${username}, your tour is already running. Watch the action bar for each stop.`);
+    return;
+  }
+  activeTours.add(username);
+  try {
+    bot.chat(`${username}, starting a quick museum tour. I will move you through ${tourStops.length} stops; the sidebar shows the live build status.`);
+    for (let index = 0; index < tourStops.length; index += 1) {
+      const stop = tourStops[index];
+      bot.chat(`/tp ${username} ${stop.x} ${PATROL_Y} ${stop.z}`);
+      await sleep(300);
+      bot.chat(`/title ${username} actionbar ${JSON.stringify({ text: `Tour ${index + 1}/${tourStops.length}: ${stop.label}`, color: 'gold' })}`);
+      bot.chat(`${username}, ${stop.label}: ${stop.line}`);
+      await sleep(TOUR_STOP_PAUSE_MS);
+    }
+    bot.chat(`${username}, tour complete. Type a landmark name for details or "request" for the request board.`);
+  } finally {
+    activeTours.delete(username);
+  }
+}
+
+function shouldStartTour(message) {
+  const text = normalize(message);
+  return /\b(tour|start tour|guide me|museum tour)\b/.test(text);
+}
+
 function createAgent(agent, index) {
   let reconnectTimer = null;
   let active = true;
@@ -214,8 +369,9 @@ function createAgent(agent, index) {
     await sleep(1000 + index * 700);
     bot.chat(`/tp ${agent.username} ${agent.home.x} ${PATROL_Y} ${agent.home.z}`);
     bot.chat(`/effect give ${agent.username} minecraft:glowing 999999 0 true`);
+    await styleAgent(bot, agent);
     await sleep(300);
-    bot.chat(`${agent.label} online: ${agent.role}. I am patrolling the origin museum cluster.`);
+    bot.chat(`${agent.label} online: ${agent.role}, model=${agent.model}. I am patrolling the origin museum cluster.`);
     startChatter(bot, agent, index, () => active);
     startMovement(bot, agent, index, () => active).catch((error) => {
       console.error(`${agent.username} movement loop`, error.message);
@@ -230,6 +386,12 @@ function createAgent(agent, index) {
       return;
     }
     await sleep(250 + index * 150);
+    if (agent.username === 'OrchGuide_o11' && shouldStartTour(message)) {
+      runTour(bot, username).catch((error) => {
+        console.error(`${agent.username} tour loop`, error.message);
+      });
+      return;
+    }
     bot.chat(responseFor(agent, username, message));
   });
 
