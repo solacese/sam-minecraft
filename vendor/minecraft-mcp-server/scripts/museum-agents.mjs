@@ -143,19 +143,19 @@ function responseFor(agent, username, message) {
     return `${username}, Munich is the large OTS flagship at the origin, centered in the visible row.`;
   }
   if (text.includes('eiffel')) {
-    return `${username}, Eiffel is just right of Munich and uses the prebuilt GrabCraft Eiffel Tower model, with a yellow marker and full-height tower profile.`;
+    return `${username}, Eiffel is just right of Munich and uses a prebuilt OTS Eiffel Tower model, with a yellow marker and full-height tower profile.`;
   }
   if (text.includes('sydney')) {
     return `${username}, Sydney is far left in the visible row, with a white marker and imported Opera House model.`;
   }
   if (text.includes('arc') || text.includes('triumph')) {
-    return `${username}, Arc de Triomphe is left of Munich and uses a high-detail GrabCraft OTS conversion with an orange marker.`;
+    return `${username}, Arc de Triomphe is left of Munich and uses a high-detail OTS model with an orange marker.`;
   }
   if (text.includes('basil') || text.includes('cathedral')) {
-    return `${username}, Saint Basil's is right of Eiffel and uses the colorful GrabCraft cathedral model with a red marker.`;
+    return `${username}, Saint Basil's is right of Eiffel and uses the colorful OTS cathedral model with a red marker.`;
   }
   if (text.includes('chrysler') || text.includes('skyscraper')) {
-    return `${username}, the NY Chrysler Building is far right in the visible row, a tall converted GrabCraft skyline model with a light blue marker.`;
+    return `${username}, the NY Chrysler Building is far right in the visible row, a tall imported OTS skyline model with a light blue marker.`;
   }
   if (text.includes('pisa') || text.includes('colosseum') || text.includes('neuschwanstein')) {
     return `${username}, those draft placeholders were replaced. This museum row now uses six high-quality OTS-backed models only.`;

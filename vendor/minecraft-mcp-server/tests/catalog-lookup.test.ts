@@ -1,5 +1,5 @@
 import test from 'ava';
-import { GrabCraftLookupService } from '../src/grabcraft-lookup.js';
+import { CatalogLookupService } from '../src/catalog-lookup.js';
 import { normalizeLandmarkSpec } from '../src/landmark-autonomy.js';
 
 const EMPTY_CATALOG_HTML = `
@@ -19,7 +19,7 @@ const CHRYSLER_SEARCH_HTML = `
         <div class="product-box item-1">
           <div class="product-image">
             <a href="/minecraft/ny-chrysler-building/skyscrapers" class="image" title="NY Chrysler Building">
-              <img src="https://www.grabcraft.com/files/products/thumb/thumb_ny-chrysler-building.png" alt="NY Chrysler Building" />
+              <img src="https://models.example.invalid/files/products/thumb/thumb_ny-chrysler-building.png" alt="NY Chrysler Building" />
             </a>
           </div>
           <div class="text-info">
@@ -45,7 +45,7 @@ const EIFFEL_SEARCH_HTML = `
         <div class="product-box item-1">
           <div class="product-image">
             <a href="/minecraft/eiffel-tower/sightseeing-buildings" class="image" title="Eiffel Tower">
-              <img src="https://www.grabcraft.com/files/products/thumb/thumb_eiffel-tower.png" alt="Eiffel Tower" />
+              <img src="https://models.example.invalid/files/products/thumb/thumb_eiffel-tower.png" alt="Eiffel Tower" />
             </a>
           </div>
           <div class="text-info">
@@ -101,8 +101,8 @@ function testSpec(id: string, name: string, culture: string, keywords: string[])
   });
 }
 
-test('GrabCraft lookup expands a broad USA prompt into usable queries and maps Chrysler result to local spec', async (t) => {
-  const service = new GrabCraftLookupService({
+test('model lookup expands a broad USA prompt into usable queries and maps Chrysler result to local spec', async (t) => {
+  const service = new CatalogLookupService({
     fetchText: async (url: string) => {
       if (url.includes('chrysler%20building')) {
         return CHRYSLER_SEARCH_HTML;
@@ -124,8 +124,8 @@ test('GrabCraft lookup expands a broad USA prompt into usable queries and maps C
   t.is(result.selected?.mappedSpecId, 'chrysler_building_us');
 });
 
-test('GrabCraft lookup returns no selected candidate when every site query is empty', async (t) => {
-  const service = new GrabCraftLookupService({
+test('model lookup returns no selected candidate when every site query is empty', async (t) => {
+  const service = new CatalogLookupService({
     fetchText: async () => EMPTY_CATALOG_HTML
   });
 
@@ -140,8 +140,8 @@ test('GrabCraft lookup returns no selected candidate when every site query is em
   t.is(result.selected, undefined);
 });
 
-test('GrabCraft lookup expands a broad French prompt into Eiffel and maps it to the active French spec', async (t) => {
-  const service = new GrabCraftLookupService({
+test('model lookup expands a broad French prompt into Eiffel and maps it to the active French spec', async (t) => {
+  const service = new CatalogLookupService({
     fetchText: async (url: string) => {
       if (url.includes('eiffel%20tower')) {
         return EIFFEL_SEARCH_HTML;

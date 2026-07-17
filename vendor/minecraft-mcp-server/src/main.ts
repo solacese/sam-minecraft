@@ -7,6 +7,7 @@ import { Vec3 } from 'vec3';
 import pathfinderPkg from 'mineflayer-pathfinder';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setupStdioFiltering } from './stdio-filter.js';
 import { log } from './logger.js';
@@ -25,6 +26,7 @@ import {
   assessManMadeDensity,
   classifyBlockNature,
   enforceDensityGuard,
+  getFootprint,
   getVolume,
   shouldEnforceOccupiedAreaGuard,
   validateSafetyLimits
@@ -50,25 +52,33 @@ import {
 } from './landmark-autonomy.js';
 import { TemplateGeneratorService } from './template-generator.js';
 import {
-  GrabCraftLookupService,
-  type GrabCraftLookupCandidate,
-  type GrabCraftLookupResult
-} from './grabcraft-lookup.js';
+  CatalogLookupService,
+  type CatalogLookupCandidate,
+  type CatalogLookupResult
+} from './catalog-lookup.js';
 import {
-  importGrabCraftModel,
-  type GrabCraftModelArtifact
-} from './grabcraft-import.js';
+  importCatalogModel,
+  type CatalogModelArtifact
+} from './catalog-import.js';
 import {
   importLocalStructureWorldAsModel,
   resolveLocalStructureReference
 } from './local-structure-import.js';
 import {
-  createGrabCraftPlacementArtifact,
-  writeGrabCraftModelArtifact,
-  writeGrabCraftPlacementArtifact,
-  type GrabCraftPlacementArtifact
-} from './grabcraft-graph.js';
-import { streamRconCommands } from './grabcraft-place.js';
+  importOtsBlockModelAsCatalogModel,
+  resolveOtsBlockModelReference
+} from './ots-blocks-import.js';
+import {
+  createCatalogPlacementArtifact,
+  writeCatalogModelArtifact,
+  writeCatalogPlacementArtifact,
+  type CatalogPlacementArtifact
+} from './catalog-graph.js';
+import {
+  buildPlacementPlan,
+  streamRconCommands,
+  type PlacementBlock
+} from './catalog-place.js';
 
 setupStdioFiltering();
 
@@ -86,7 +96,7 @@ const GoalNearXZ = (pathfinderPkg as any).goals?.GoalNearXZ;
 const CURRENT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const LANDMARK_SPECS_DIR = path.resolve(CURRENT_DIR, '../landmark_specs');
 const META_TEMPLATES_DIR = path.resolve(CURRENT_DIR, '../meta_templates');
-const PROJECT_ROOT_DIR = path.resolve(CURRENT_DIR, '../..');
+const PROJECT_ROOT_DIR = path.resolve(CURRENT_DIR, '../../..');
 
 const BLOCK_QUEUE_DELAY_MS = 5;
 const FILL_BATCH_TILE_SPAN = 6;
@@ -102,8 +112,22 @@ const MAX_STORM_DAMAGE_BLOCKS = 48;
 const MAX_REPAIR_BLOCKS = 300;
 const ZONE_GAP_BLOCKS = 2;
 const ORCHESTRATOR_RESERVATION_CONTROLLER = 'OrchScout_o11';
-const GRABCRAFT_RUNTIME_DIR = '/tmp/sam-minecraft-coordination/grabcraft-runtime';
-const GRABCRAFT_RCON_BATCH_SIZE = 1400;
+const CATALOG_RUNTIME_DIR = '/tmp/sam-minecraft-coordination/catalog-runtime';
+const CATALOG_RCON_BATCH_SIZE = 45;
+const CATALOG_WORK_POST_OFFSET = 3;
+const CATALOG_WORKER_WALK_TIMEOUT_MS = 4500;
+const CATALOG_CINEMATIC_BATCH_DELAY_MS = 250;
+const DIRECT_RECORDING_RCON_BATCH_DELAY_MS = 250;
+const CATALOG_BATCH_SAFETY_LIMITS = {
+  ...DEFAULT_SAFETY_LIMITS,
+  maxFootprint: Math.min(DEFAULT_SAFETY_LIMITS.maxFootprint, 1000),
+  maxVolume: Math.min(DEFAULT_SAFETY_LIMITS.maxVolume, 3000)
+};
+const RECORDING_CHOREOGRAPHY_DEFAULT_AGENTS = [
+  'BuildBea_l33',
+  'MonumentMarc_m9',
+  'SupplySid_l31'
+];
 
 const OWNER_ALIAS_MAP = new Map<string, string>([
   ['minecraftagent', 'HandyHank_l33'],
@@ -130,7 +154,7 @@ const OWNER_ALIAS_MAP = new Map<string, string>([
 
 let landmarkAutonomyService: LandmarkAutonomyService | null = null;
 let templateGeneratorService: TemplateGeneratorService | null = null;
-let grabCraftLookupService: GrabCraftLookupService | null = null;
+let catalogLookupService: CatalogLookupService | null = null;
 
 function getLandmarkAutonomyService(): LandmarkAutonomyService {
   if (!landmarkAutonomyService) {
@@ -153,11 +177,11 @@ function getTemplateGeneratorService(): TemplateGeneratorService {
   return templateGeneratorService;
 }
 
-function getGrabCraftLookupService(): GrabCraftLookupService {
-  if (!grabCraftLookupService) {
-    grabCraftLookupService = new GrabCraftLookupService();
+function getCatalogLookupService(): CatalogLookupService {
+  if (!catalogLookupService) {
+    catalogLookupService = new CatalogLookupService();
   }
-  return grabCraftLookupService;
+  return catalogLookupService;
 }
 
 async function autoCompleteGraphTaskForMutation(
@@ -1150,7 +1174,7 @@ function formatWorkerTaskPacket(task: BuildGraphNode): string {
   );
 }
 
-function recommendScaleForGrabCraftCandidate(candidate: GrabCraftLookupCandidate, sizeHint?: string): string {
+function recommendScaleForCatalogCandidate(candidate: CatalogLookupCandidate, sizeHint?: string): string {
   if (sizeHint && sizeHint.trim()) {
     return sizeHint.trim().toLowerCase();
   }
@@ -1165,7 +1189,7 @@ function recommendScaleForGrabCraftCandidate(candidate: GrabCraftLookupCandidate
   return 'medium';
 }
 
-function formatGrabCraftLookupCandidate(candidate: GrabCraftLookupCandidate): string {
+function formatCatalogLookupCandidate(candidate: CatalogLookupCandidate): string {
   return (
     `${candidate.title} score=${candidate.score} query="${candidate.query}" ` +
     `blocks=${candidate.blockCount ?? 'unknown'} mappedSpec=${candidate.mappedSpecId ?? 'none'} ` +
@@ -1181,12 +1205,12 @@ function slugifyIdentifier(value: string): string {
     .slice(0, 120);
 }
 
-async function compileGrabCraftGraphWithPlacement(
+async function compileCatalogGraphWithPlacement(
   bot: any,
   autonomy: LandmarkAutonomyService,
   input: {
     prompt: string;
-    candidate: GrabCraftLookupCandidate;
+    candidate: CatalogLookupCandidate;
     cultureHint?: string;
     sizeHint?: string;
     targetDurationMinutes?: number;
@@ -1205,12 +1229,12 @@ async function compileGrabCraftGraphWithPlacement(
   placementSummary: string;
   modelArtifactPath: string;
   placementArtifactPath: string;
-  model: GrabCraftModelArtifact;
+  model: CatalogModelArtifact;
 }> {
-  const model = await importGrabCraftModel(input.candidate.url);
+  const model = await importCatalogModel(input.candidate.url);
   const modelBounds = model.stats.bounds;
   if (!modelBounds) {
-    throw new Error(`GrabCraft model '${input.candidate.url}' has no bounds.`);
+    throw new Error(`Imported model '${input.candidate.url}' has no bounds.`);
   }
 
   const width = modelBounds.maxX - modelBounds.minX + 1;
@@ -1227,7 +1251,7 @@ async function compileGrabCraftGraphWithPlacement(
     ? await getSurfaceHeightAt(bot, requestedCenterX, requestedCenterZ)
     : toInt(input.baseY);
   let placementSummary =
-    `source=grabcraft url=${input.candidate.url} title="${model.source.title}" ` +
+    `source=catalog url=${input.candidate.url} title="${model.source.title}" ` +
     `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualOrigin=(${minX},${baseY},${minZ}) autoPlace=no`;
 
   if (autoPlace) {
@@ -1272,7 +1296,7 @@ async function compileGrabCraftGraphWithPlacement(
 
     if (!site.ok || !site.result) {
       throw new Error(
-        `Could not auto-place GrabCraft model '${model.source.title}' near (${requestedCenterX},${requestedCenterZ}). ` +
+        `Could not auto-place imported model '${model.source.title}' near (${requestedCenterX},${requestedCenterZ}). ` +
         `Footprint=${width}x${depth}. Last reason: ${site.reason}`
       );
     }
@@ -1285,23 +1309,23 @@ async function compileGrabCraftGraphWithPlacement(
       baseY = site.result.evaluation.baseY;
     }
     placementSummary =
-      `source=grabcraft url=${input.candidate.url} title="${model.source.title}" ` +
+      `source=catalog url=${input.candidate.url} title="${model.source.title}" ` +
       `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualCenter=(${centerX},${baseY},${centerZ}) ` +
       `actualOrigin=(${minX},${baseY},${minZ}) autoPlace=yes footprint=${formatFootprint(site.result.footprint)} ` +
       `terrainDelta=${terrainDelta(site.result.evaluation)}`;
   }
 
   const graphId = `landmark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const placementArtifact = createGrabCraftPlacementArtifact({
+  const placementArtifact = createCatalogPlacementArtifact({
     graphId,
     model,
     originX: minX,
     originY: baseY,
     originZ: minZ
   });
-  const runtimeDir = path.join(GRABCRAFT_RUNTIME_DIR, graphId);
-  const modelArtifactPath = await writeGrabCraftModelArtifact(runtimeDir, graphId, model);
-  const placementArtifactPath = await writeGrabCraftPlacementArtifact(runtimeDir, placementArtifact);
+  const runtimeDir = path.join(CATALOG_RUNTIME_DIR, graphId);
+  const modelArtifactPath = await writeCatalogModelArtifact(runtimeDir, graphId, model);
+  const placementArtifactPath = await writeCatalogPlacementArtifact(runtimeDir, placementArtifact);
   const now = Date.now();
 
   const nodes: BuildGraphNode[] = placementArtifact.shards.map((shard) => ({
@@ -1313,7 +1337,7 @@ async function compileGrabCraftGraphWithPlacement(
     dependencies: [...shard.dependencies],
     assignedWorker: shard.assignedWorker,
     assignedOwner: resolveReservationOwner(shard.assignedWorker),
-    stylePreset: 'grabcraft_exact',
+    stylePreset: 'catalog_exact',
     bounds: shard.bounds,
     centerX: Math.floor((shard.bounds.minX + shard.bounds.maxX) / 2),
     centerZ: Math.floor((shard.bounds.minZ + shard.bounds.maxZ) / 2),
@@ -1323,28 +1347,28 @@ async function compileGrabCraftGraphWithPlacement(
     attempts: 0,
     updatedAt: now,
     toolPlan: {
-      primaryTool: 'place-grabcraft-shard',
+      primaryTool: 'place-catalog-shard',
       params: {
         placementFile: placementArtifactPath,
         shardId: shard.shardId
       },
       note:
-        `Place exact GrabCraft shard for ${model.source.title}. source=${input.candidate.url} ` +
+        `Place exact imported model shard for ${model.source.title}. source=${input.candidate.url} ` +
         `blocks=${shard.blockCount}`
     }
   }));
 
   const graph: BuildGraph = {
     graphId,
-    specId: input.candidate.mappedSpecId ?? `grabcraft_${slugifyIdentifier(model.source.title)}`,
+    specId: input.candidate.mappedSpecId ?? `catalog_${slugifyIdentifier(model.source.title)}`,
     specName: model.source.title,
-    culture: input.cultureHint ? String(input.cultureHint) : (input.candidate.mappedSpecId?.split('_').at(-1) ?? 'grabcraft'),
+    culture: input.cultureHint ? String(input.cultureHint) : (input.candidate.mappedSpecId?.split('_').at(-1) ?? 'catalog'),
     prompt: input.prompt,
     originX: centerX,
     originZ: centerZ,
     baseY,
-    scale: input.sizeHint?.trim().toLowerCase() || 'grabcraft',
-    stylePreset: 'grabcraft_exact',
+    scale: input.sizeHint?.trim().toLowerCase() || 'catalog',
+    stylePreset: 'catalog_exact',
     graphStatus: 'planning',
     targetDurationMinutes: Math.max(10, Math.min(60, toInt(input.targetDurationMinutes ?? 30))),
     completionTarget: 1,
@@ -1397,7 +1421,7 @@ async function compileLocalStructureGraphWithPlacement(
   placementSummary: string;
   modelArtifactPath: string;
   placementArtifactPath: string;
-  model: GrabCraftModelArtifact;
+  model: CatalogModelArtifact;
 }> {
   const model = await importLocalStructureWorldAsModel({
     filePath: input.filePath,
@@ -1490,16 +1514,16 @@ async function compileLocalStructureGraphWithPlacement(
   }
 
   const graphId = `landmark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-  const placementArtifact = createGrabCraftPlacementArtifact({
+  const placementArtifact = createCatalogPlacementArtifact({
     graphId,
     model,
     originX: minX,
     originY: baseY,
     originZ: minZ
   });
-  const runtimeDir = path.join(GRABCRAFT_RUNTIME_DIR, graphId);
-  const modelArtifactPath = await writeGrabCraftModelArtifact(runtimeDir, graphId, model);
-  const placementArtifactPath = await writeGrabCraftPlacementArtifact(runtimeDir, placementArtifact);
+  const runtimeDir = path.join(CATALOG_RUNTIME_DIR, graphId);
+  const modelArtifactPath = await writeCatalogModelArtifact(runtimeDir, graphId, model);
+  const placementArtifactPath = await writeCatalogPlacementArtifact(runtimeDir, placementArtifact);
   const now = Date.now();
 
   const nodes: BuildGraphNode[] = placementArtifact.shards.map((shard) => ({
@@ -1521,7 +1545,7 @@ async function compileLocalStructureGraphWithPlacement(
     attempts: 0,
     updatedAt: now,
     toolPlan: {
-      primaryTool: 'place-grabcraft-shard',
+      primaryTool: 'place-catalog-shard',
       params: {
         placementFile: placementArtifactPath,
         shardId: shard.shardId
@@ -1570,6 +1594,207 @@ async function compileLocalStructureGraphWithPlacement(
   };
 }
 
+async function compileOtsBlockModelGraphWithPlacement(
+  bot: any,
+  autonomy: LandmarkAutonomyService,
+  input: {
+    prompt: string;
+    filePath: string;
+    title?: string;
+    sourceRef?: string;
+    sourceId?: string;
+    targetDurationMinutes?: number;
+    originX: number;
+    originZ: number;
+    baseY?: number;
+    autoPlace?: boolean;
+    searchRadius?: number;
+    searchStep?: number;
+    maxHeightDelta?: number;
+    maxManMadeColumns?: number;
+    waterBufferBlocks?: number;
+    stabilizeGravityBlocks?: boolean;
+  }
+): Promise<{
+  graph: BuildGraph;
+  placementSummary: string;
+  modelArtifactPath: string;
+  placementArtifactPath: string;
+  model: CatalogModelArtifact;
+}> {
+  const model = await importOtsBlockModelAsCatalogModel({
+    filePath: input.filePath,
+    title: input.title,
+    stabilizeGravityBlocks: input.stabilizeGravityBlocks
+  });
+  const modelBounds = model.stats.bounds;
+  if (!modelBounds) {
+    throw new Error(`Imported OTS block model '${input.filePath}' has no bounds.`);
+  }
+
+  const width = modelBounds.maxX - modelBounds.minX + 1;
+  const depth = modelBounds.maxZ - modelBounds.minZ + 1;
+  const autoPlace = input.autoPlace == null ? true : Boolean(input.autoPlace);
+  const requestedCenterX = toInt(input.originX);
+  const requestedCenterZ = toInt(input.originZ);
+  const resolvedFilePath = path.resolve(input.filePath);
+  const sourceRef = input.sourceRef?.trim() || resolvedFilePath;
+
+  let centerX = requestedCenterX;
+  let centerZ = requestedCenterZ;
+  let minX = requestedCenterX - Math.floor(width / 2);
+  let minZ = requestedCenterZ - Math.floor(depth / 2);
+  let baseY = input.baseY == null
+    ? await getSurfaceHeightAt(bot, requestedCenterX, requestedCenterZ)
+    : toInt(input.baseY);
+  let placementSummary =
+    `source=ots-blocks ref="${sourceRef}" title="${model.source.title}" ` +
+    `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualOrigin=(${minX},${baseY},${minZ}) autoPlace=no`;
+
+  if (autoPlace) {
+    const dynamicSearchStep = Math.max(4, Math.min(12, Math.ceil(Math.max(width, depth) / 8)));
+    const searchRadius = Math.max(0, Math.min(128, toInt(input.searchRadius ?? 80)));
+    const searchStep = Math.max(1, Math.min(12, toInt(input.searchStep ?? dynamicSearchStep)));
+    const maxHeightDelta = Math.max(0, Math.min(8, toInt(input.maxHeightDelta ?? 4)));
+    const maxManMadeColumns = Math.max(0, Math.min(12, toInt(input.maxManMadeColumns ?? 0)));
+    const waterBufferBlocks = Math.max(0, Math.min(4, toInt(input.waterBufferBlocks ?? 1)));
+    const existingClaims = await coordinationStore.listClaims();
+    const activeGraphBounds = await autonomy.listActiveGraphBounds();
+    const blockedBounds: BoundingBox[] = [
+      ...existingClaims.map((claim) => normalizeBounds(claim.minX, claim.minY, claim.minZ, claim.maxX, claim.maxY, claim.maxZ)),
+      ...activeGraphBounds
+    ];
+    const site = blockedBounds.length > 0
+      ? await findNearestLandFootprintAvoiding(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks,
+          blockedBounds
+        )
+      : await findNearestLandFootprint(
+          bot,
+          requestedCenterX,
+          requestedCenterZ,
+          width,
+          depth,
+          searchRadius,
+          searchStep,
+          maxHeightDelta,
+          maxManMadeColumns,
+          waterBufferBlocks
+        );
+
+    if (!site.ok || !site.result) {
+      throw new Error(
+        `Could not auto-place OTS block model '${model.source.title}' near (${requestedCenterX},${requestedCenterZ}). ` +
+        `Footprint=${width}x${depth}. Last reason: ${site.reason}`
+      );
+    }
+
+    centerX = site.result.footprint.centerX;
+    centerZ = site.result.footprint.centerZ;
+    minX = site.result.footprint.x1;
+    minZ = site.result.footprint.z1;
+    if (input.baseY == null) {
+      baseY = site.result.evaluation.baseY;
+    }
+    placementSummary =
+      `source=ots-blocks file=${resolvedFilePath} title="${model.source.title}" ` +
+      `requestedCenter=(${requestedCenterX},${requestedCenterZ}) actualCenter=(${centerX},${baseY},${centerZ}) ` +
+      `actualOrigin=(${minX},${baseY},${minZ}) autoPlace=yes footprint=${formatFootprint(site.result.footprint)} ` +
+      `terrainDelta=${terrainDelta(site.result.evaluation)}`;
+  }
+
+  const graphId = `landmark_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const placementArtifact = createCatalogPlacementArtifact({
+    graphId,
+    model,
+    originX: minX,
+    originY: baseY,
+    originZ: minZ
+  });
+  const runtimeDir = path.join(CATALOG_RUNTIME_DIR, graphId);
+  const modelArtifactPath = await writeCatalogModelArtifact(runtimeDir, graphId, model);
+  const placementArtifactPath = await writeCatalogPlacementArtifact(runtimeDir, placementArtifact);
+  const now = Date.now();
+
+  const nodes: BuildGraphNode[] = placementArtifact.shards.map((shard) => ({
+    taskId: shard.shardId,
+    zoneId: `${graphId.slice(0, 10)}_${shard.shardId}`,
+    componentId: shard.shardId,
+    label: shard.label,
+    role: shard.role,
+    dependencies: [...shard.dependencies],
+    assignedWorker: shard.assignedWorker,
+    assignedOwner: resolveReservationOwner(shard.assignedWorker),
+    stylePreset: 'ots_blocks_exact',
+    bounds: shard.bounds,
+    centerX: Math.floor((shard.bounds.minX + shard.bounds.maxX) / 2),
+    centerZ: Math.floor((shard.bounds.minZ + shard.bounds.maxZ) / 2),
+    expectedBlocks: shard.blockCount,
+    blocksPlaced: 0,
+    status: shard.dependencies.length === 0 ? 'ready' : 'blocked',
+    attempts: 0,
+    updatedAt: now,
+    toolPlan: {
+      primaryTool: 'place-catalog-shard',
+      params: {
+        placementFile: placementArtifactPath,
+        shardId: shard.shardId
+      },
+      note:
+        `Place exact OTS block-model shard for ${model.source.title}. source=${resolvedFilePath} ` +
+        `blocks=${shard.blockCount}`
+    }
+  }));
+
+  const graph: BuildGraph = {
+    graphId,
+    specId: input.sourceId
+      ? `ots_${slugifyIdentifier(input.sourceId)}`
+      : `ots_${slugifyIdentifier(model.source.title)}`,
+    specName: model.source.title,
+    culture: 'custom',
+    prompt: input.prompt,
+    originX: centerX,
+    originZ: centerZ,
+    baseY,
+    scale: 'block-model',
+    stylePreset: 'ots_blocks_exact',
+    graphStatus: 'planning',
+    targetDurationMinutes: Math.max(10, Math.min(60, toInt(input.targetDurationMinutes ?? 30))),
+    completionTarget: 1,
+    createdAt: now,
+    updatedAt: now,
+    expectedBlocks: nodes.reduce((sum, node) => sum + node.expectedBlocks, 0),
+    placedBlocks: 0,
+    nodes,
+    edges: nodes.flatMap((node) => node.dependencies.map((dependency) => ({ from: dependency, to: node.taskId })))
+  };
+
+  await autonomy.registerBuildGraph(graph);
+
+  if (placementArtifact.skippedPalette.length > 0) {
+    placementSummary += ` skippedPalette=${placementArtifact.skippedPalette.length}`;
+  }
+  placementSummary += ` modelArtifact=${modelArtifactPath} placementArtifact=${placementArtifactPath}`;
+
+  return {
+    graph,
+    placementSummary,
+    modelArtifactPath,
+    placementArtifactPath,
+    model
+  };
+}
+
 function chunkCommands(commands: string[], batchSize: number): string[][] {
   const safeBatchSize = Math.max(1, Math.floor(batchSize));
   const batches: string[][] = [];
@@ -1579,7 +1804,520 @@ function chunkCommands(commands: string[], batchSize: number): string[][] {
   return batches;
 }
 
-async function resolveLandmarkCandidatesWithGrabCraft(
+function appendProcessLines(lines: string[], chunk: string, limit = 80): void {
+  for (const line of chunk.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    lines.push(trimmed);
+  }
+  if (lines.length > limit) {
+    lines.splice(0, lines.length - limit);
+  }
+}
+
+async function runProjectPythonScript(
+  scriptRelativePath: string,
+  args: string[]
+): Promise<{ stdoutTail: string; stderrTail: string }> {
+  const scriptPath = path.join(PROJECT_ROOT_DIR, scriptRelativePath);
+  const stdoutLines: string[] = [];
+  const stderrLines: string[] = [];
+
+  return await new Promise((resolve, reject) => {
+    const child = spawn('python3', [scriptPath, ...args], {
+      cwd: PROJECT_ROOT_DIR,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    child.stdout.on('data', (chunk) => {
+      appendProcessLines(stdoutLines, chunk.toString());
+    });
+    child.stderr.on('data', (chunk) => {
+      appendProcessLines(stderrLines, chunk.toString());
+    });
+    child.on('error', reject);
+    child.on('close', (code, signal) => {
+      const stdoutTail = stdoutLines.slice(-30).join('\n');
+      const stderrTail = stderrLines.slice(-20).join('\n');
+      if (code === 0) {
+        resolve({ stdoutTail, stderrTail });
+        return;
+      }
+      reject(
+        new Error(
+          `${scriptRelativePath} failed with code=${code ?? 'none'} signal=${signal ?? 'none'} ` +
+          `stderr=${stderrTail || 'none'} stdout=${stdoutTail || 'none'}`
+        )
+      );
+    });
+  });
+}
+
+function commandForPlacementRun(
+  x1: number,
+  x2: number,
+  y: number,
+  zCoord: number,
+  blockState: string
+): string {
+  if (x1 === x2) {
+    return `/setblock ${x1} ${y} ${zCoord} ${blockState}`;
+  }
+  return `/fill ${x1} ${y} ${zCoord} ${x2} ${y} ${zCoord} ${blockState}`;
+}
+
+function placementRunCommands(blocks: PlacementBlock[]): string[] {
+  const sorted = [...blocks].sort((left, right) => {
+    if (left.y !== right.y) {
+      return left.y - right.y;
+    }
+    if (left.z !== right.z) {
+      return left.z - right.z;
+    }
+    if (left.x !== right.x) {
+      return left.x - right.x;
+    }
+    return left.blockState.localeCompare(right.blockState);
+  });
+
+  const commands: string[] = [];
+  let runStart: number | null = null;
+  let runEnd: number | null = null;
+  let runY: number | null = null;
+  let runZ: number | null = null;
+  let runState: string | null = null;
+
+  const flushRun = () => {
+    if (runStart == null || runEnd == null || runY == null || runZ == null || runState == null) {
+      return;
+    }
+    commands.push(commandForPlacementRun(runStart, runEnd, runY, runZ, runState));
+  };
+
+  for (const block of sorted) {
+    if (
+      runState != null &&
+      block.y === runY &&
+      block.z === runZ &&
+      block.blockState === runState &&
+      block.x === (runEnd ?? block.x) + 1
+    ) {
+      runEnd = block.x;
+      continue;
+    }
+
+    flushRun();
+    runStart = block.x;
+    runEnd = block.x;
+    runY = block.y;
+    runZ = block.z;
+    runState = block.blockState;
+  }
+
+  flushRun();
+  return commands;
+}
+
+function placementBounds(blocks: PlacementBlock[]): BoundingBox {
+  const xs = blocks.map((block) => block.x);
+  const ys = blocks.map((block) => block.y);
+  const zs = blocks.map((block) => block.z);
+  return normalizeBounds(
+    Math.min(...xs),
+    Math.min(...ys),
+    Math.min(...zs),
+    Math.max(...xs),
+    Math.max(...ys),
+    Math.max(...zs)
+  );
+}
+
+function groupPlacementBlocksByLayer(blocks: PlacementBlock[]): Array<{ y: number; blocks: PlacementBlock[] }> {
+  const byLayer = new Map<number, PlacementBlock[]>();
+  for (const block of blocks) {
+    const layer = byLayer.get(block.y) ?? [];
+    layer.push(block);
+    byLayer.set(block.y, layer);
+  }
+
+  return Array.from(byLayer.entries())
+    .sort(([leftY], [rightY]) => leftY - rightY)
+    .map(([y, layerBlocks]) => ({ y, blocks: layerBlocks }));
+}
+
+function preparedRecordingPlotCommands(baseY: number, clearTopY: number, radius: number): string[] {
+  const minX = -radius;
+  const maxX = radius;
+  const minZ = -radius;
+  const maxZ = radius;
+  const commands: string[] = [];
+
+  commands.push(`/forceload add ${minX} ${minZ} ${maxX} ${maxZ}`);
+  for (let y = baseY; y <= clearTopY; y += 1) {
+    commands.push(`/fill ${minX} ${y} ${minZ} ${maxX} ${y} ${maxZ} air`);
+  }
+  commands.push(`/fill ${minX} ${baseY - 3} ${minZ} ${maxX} ${baseY - 3} ${maxZ} stone`);
+  commands.push(`/fill ${minX} ${baseY - 2} ${minZ} ${maxX} ${baseY - 2} ${maxZ} dirt`);
+  commands.push(`/fill ${minX} ${baseY - 1} ${minZ} ${maxX} ${baseY - 1} ${maxZ} grass_block`);
+  commands.push('/gamerule doMobSpawning false');
+  commands.push('/gamerule doDaylightCycle false');
+  commands.push('/gamerule doWeatherCycle false');
+  commands.push('/difficulty peaceful');
+  commands.push('/time set day');
+  commands.push('/weather clear 1000000');
+  commands.push('/kill @e[type=!player]');
+  commands.push('/spawnpoint @a 0 69 -95');
+  commands.push('/setworldspawn 0 69 -95');
+  commands.push('/tp Noptus 0 96 -115 0 25');
+  return commands;
+}
+
+function parseRecordingAgentList(raw: unknown): string[] {
+  const parsed = parseCsvList(raw);
+  return parsed && parsed.length > 0
+    ? parsed
+    : [...RECORDING_CHOREOGRAPHY_DEFAULT_AGENTS];
+}
+
+function recordingPhaseForLayer(layerIndex: number, totalLayers: number): string {
+  const ratio = layerIndex / Math.max(1, totalLayers);
+  if (ratio < 0.18) {
+    return 'foundation and podium';
+  }
+  if (ratio < 0.48) {
+    return 'lower shells and glazing';
+  }
+  if (ratio < 0.78) {
+    return 'sail ribs and roof arcs';
+  }
+  if (ratio < 0.98) {
+    return 'upper shell finish';
+  }
+  return 'final capstones';
+}
+
+function tellrawCommand(text: string, color = 'aqua'): string {
+  return `/tellraw @a ${JSON.stringify({ text, color })}`;
+}
+
+function recordingChoreographyCommands(input: {
+  bounds: BoundingBox;
+  layerIndex: number;
+  totalLayers: number;
+  layerY: number;
+  baseY: number;
+  agents: string[];
+  moveAgents: boolean;
+  emitChat: boolean;
+  chatIntervalLayers: number;
+  moveIntervalLayers: number;
+}): string[] {
+  const commands: string[] = [];
+  const isFirst = input.layerIndex === 1;
+  const isLast = input.layerIndex === input.totalLayers;
+  const chatInterval = Math.max(1, input.chatIntervalLayers);
+  const moveInterval = Math.max(1, input.moveIntervalLayers);
+
+  if (
+    input.emitChat &&
+    (isFirst || isLast || input.layerIndex % chatInterval === 0)
+  ) {
+    const phase = recordingPhaseForLayer(input.layerIndex, input.totalLayers);
+    commands.push(
+      tellrawCommand(
+        `[SAM] Coordination: ${phase}, layer ${input.layerIndex}/${input.totalLayers}. ` +
+        `${input.agents.slice(0, 3).join(', ')} are tracking the active build front.`
+      )
+    );
+  }
+
+  if (
+    !input.moveAgents ||
+    input.agents.length === 0 ||
+    !(isFirst || isLast || input.layerIndex % moveInterval === 0)
+  ) {
+    return commands;
+  }
+
+  const width = input.bounds.maxX - input.bounds.minX + 1;
+  const depth = input.bounds.maxZ - input.bounds.minZ + 1;
+  const orbitY = Math.max(input.baseY + 1, Math.min(input.layerY + 2, input.baseY + 12));
+  const positions = [
+    {
+      x: input.bounds.minX + Math.floor(((input.layerIndex * 7) % Math.max(1, width))),
+      z: input.bounds.minZ - 5,
+      yaw: 0
+    },
+    {
+      x: input.bounds.maxX + 5,
+      z: input.bounds.minZ + Math.floor(((input.layerIndex * 9) % Math.max(1, depth))),
+      yaw: -90
+    },
+    {
+      x: input.bounds.minX + Math.floor(((input.layerIndex * 11) % Math.max(1, width))),
+      z: input.bounds.maxZ + 5,
+      yaw: 180
+    },
+    {
+      x: input.bounds.minX - 5,
+      z: input.bounds.minZ + Math.floor(((input.layerIndex * 5) % Math.max(1, depth))),
+      yaw: 90
+    }
+  ];
+
+  input.agents.slice(0, positions.length).forEach((agent, index) => {
+    const position = positions[index];
+    commands.push(`/tp ${agent} ${position.x} ${orbitY} ${position.z} ${position.yaw} 18`);
+  });
+
+  return commands;
+}
+
+type CinematicPlacementBlock = {
+  x: number;
+  y: number;
+  z: number;
+  blockState: string;
+};
+
+function boundsForPlacementBlocks(blocks: CinematicPlacementBlock[]): BoundingBox {
+  const xs = blocks.map((block) => block.x);
+  const ys = blocks.map((block) => block.y);
+  const zs = blocks.map((block) => block.z);
+  return normalizeBounds(
+    Math.min(...xs),
+    Math.min(...ys),
+    Math.min(...zs),
+    Math.max(...xs),
+    Math.max(...ys),
+    Math.max(...zs)
+  );
+}
+
+function isCatalogBatchWithinSafetyLimits(blocks: CinematicPlacementBlock[]): boolean {
+  if (blocks.length === 0 || blocks.length > CATALOG_RCON_BATCH_SIZE) {
+    return false;
+  }
+
+  const bounds = boundsForPlacementBlocks(blocks);
+  return (
+    getFootprint(bounds) <= CATALOG_BATCH_SAFETY_LIMITS.maxFootprint &&
+    getVolume(bounds) <= CATALOG_BATCH_SAFETY_LIMITS.maxVolume
+  );
+}
+
+function chunkPlacementBlocksByLayer(
+  blocks: CinematicPlacementBlock[],
+  batchSize: number
+): CinematicPlacementBlock[][] {
+  const safeBatchSize = Math.max(1, Math.floor(batchSize));
+  const sortedBlocks = [...blocks].sort((left, right) => {
+    if (left.y !== right.y) {
+      return left.y - right.y;
+    }
+    if (left.z !== right.z) {
+      return left.z - right.z;
+    }
+    return left.x - right.x;
+  });
+
+  const batches: CinematicPlacementBlock[][] = [];
+  let currentBatch: CinematicPlacementBlock[] = [];
+  let currentLayer: number | null = null;
+
+  for (const block of sortedBlocks) {
+    if (
+      currentBatch.length >= safeBatchSize ||
+      (currentLayer != null && block.y !== currentLayer && currentBatch.length >= Math.floor(safeBatchSize * 0.45))
+    ) {
+      batches.push(currentBatch);
+      currentBatch = [];
+      currentLayer = null;
+    }
+
+    currentBatch.push(block);
+    currentLayer = block.y;
+  }
+
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+
+  return batches;
+}
+
+function sortPlacementBlocksBottomUp(
+  blocks: CinematicPlacementBlock[]
+): CinematicPlacementBlock[] {
+  return [...blocks].sort((left, right) => {
+    if (left.y !== right.y) {
+      return left.y - right.y;
+    }
+    if (left.z !== right.z) {
+      return left.z - right.z;
+    }
+    return left.x - right.x;
+  });
+}
+
+function splitPlacementBatchForSafety(
+  blocks: CinematicPlacementBlock[],
+  output: CinematicPlacementBlock[][]
+): void {
+  if (blocks.length === 0) {
+    return;
+  }
+
+  if (blocks.length === 1 || isCatalogBatchWithinSafetyLimits(blocks)) {
+    output.push(sortPlacementBlocksBottomUp(blocks));
+    return;
+  }
+
+  const bounds = boundsForPlacementBlocks(blocks);
+  const spans = [
+    { axis: 'x' as const, size: bounds.maxX - bounds.minX },
+    { axis: 'z' as const, size: bounds.maxZ - bounds.minZ },
+    { axis: 'y' as const, size: bounds.maxY - bounds.minY }
+  ].sort((left, right) => right.size - left.size);
+  const axis = spans[0].axis;
+  const sorted = [...blocks].sort((left, right) => {
+    const axisDelta = left[axis] - right[axis];
+    if (axisDelta !== 0) {
+      return axisDelta;
+    }
+    if (left.y !== right.y) {
+      return left.y - right.y;
+    }
+    if (left.z !== right.z) {
+      return left.z - right.z;
+    }
+    return left.x - right.x;
+  });
+  const midpoint = Math.floor(sorted.length / 2);
+
+  if (midpoint <= 0 || midpoint >= sorted.length) {
+    output.push(sortPlacementBlocksBottomUp(blocks));
+    return;
+  }
+
+  splitPlacementBatchForSafety(sorted.slice(0, midpoint), output);
+  splitPlacementBatchForSafety(sorted.slice(midpoint), output);
+}
+
+function splitPlacementBlocksForSafeCinematicBatches(
+  blocks: CinematicPlacementBlock[],
+  batchSize: number
+): CinematicPlacementBlock[][] {
+  const layerBatches = chunkPlacementBlocksByLayer(blocks, batchSize);
+  const safeBatches: CinematicPlacementBlock[][] = [];
+
+  for (const layerBatch of layerBatches) {
+    splitPlacementBatchForSafety(layerBatch, safeBatches);
+  }
+
+  return safeBatches;
+}
+
+function chooseCinematicWorkPost(
+  shardBounds: BoundingBox,
+  batchBounds: BoundingBox,
+  batchIndex: number
+): { x: number; z: number } {
+  const batchCenterX = Math.floor((batchBounds.minX + batchBounds.maxX) / 2);
+  const batchCenterZ = Math.floor((batchBounds.minZ + batchBounds.maxZ) / 2);
+  const shardCenterZ = Math.floor((shardBounds.minZ + shardBounds.maxZ) / 2);
+  const side = batchIndex % 4;
+
+  if (side === 0) {
+    return {
+      x: Math.max(shardBounds.minX - CATALOG_WORK_POST_OFFSET, Math.min(shardBounds.maxX + CATALOG_WORK_POST_OFFSET, batchCenterX)),
+      z: shardBounds.minZ - CATALOG_WORK_POST_OFFSET
+    };
+  }
+  if (side === 1) {
+    return {
+      x: shardBounds.maxX + CATALOG_WORK_POST_OFFSET,
+      z: Math.max(shardBounds.minZ - CATALOG_WORK_POST_OFFSET, Math.min(shardBounds.maxZ + CATALOG_WORK_POST_OFFSET, batchCenterZ))
+    };
+  }
+  if (side === 2) {
+    return {
+      x: Math.max(shardBounds.minX - CATALOG_WORK_POST_OFFSET, Math.min(shardBounds.maxX + CATALOG_WORK_POST_OFFSET, batchCenterX)),
+      z: shardBounds.maxZ + CATALOG_WORK_POST_OFFSET
+    };
+  }
+
+  return {
+    x: shardBounds.minX - CATALOG_WORK_POST_OFFSET,
+    z: Math.max(shardBounds.minZ - CATALOG_WORK_POST_OFFSET, Math.min(shardBounds.maxZ + CATALOG_WORK_POST_OFFSET, Number.isFinite(batchCenterZ) ? batchCenterZ : shardCenterZ))
+  };
+}
+
+async function walkBotNearXZBestEffort(
+  bot: any,
+  x: number,
+  zCoord: number,
+  range: number,
+  timeoutMs: number
+): Promise<boolean> {
+  if (horizontalDistanceTo(bot, x, zCoord) <= range) {
+    return true;
+  }
+
+  let timedOut = false;
+  const movement = walkBotNearXZ(bot, x, zCoord, range)
+    .then(() => true)
+    .catch((error) => {
+      log('warn', `Cinematic worker walk failed for ${bot.username}: ${formatError(error)}`);
+      return false;
+    });
+  const timeout = delay(timeoutMs).then(() => {
+    timedOut = true;
+    return false;
+  });
+  const moved = await Promise.race([movement, timeout]);
+
+  if (timedOut && bot.pathfinder?.stop) {
+    try {
+      bot.pathfinder.stop();
+    } catch {
+      // Best-effort only. Placement must continue even if movement choreography fails.
+    }
+  }
+
+  return moved;
+}
+
+async function animateBotForPlacementBatch(
+  bot: any,
+  shardBounds: BoundingBox,
+  batchBounds: BoundingBox,
+  batchIndex: number
+): Promise<boolean> {
+  const workPost = chooseCinematicWorkPost(shardBounds, batchBounds, batchIndex);
+  const moved = await walkBotNearXZBestEffort(
+    bot,
+    workPost.x,
+    workPost.z,
+    2,
+    CATALOG_WORKER_WALK_TIMEOUT_MS
+  );
+
+  const targetX = Math.floor((batchBounds.minX + batchBounds.maxX) / 2);
+  const targetY = Math.floor((batchBounds.minY + batchBounds.maxY) / 2);
+  const targetZ = Math.floor((batchBounds.minZ + batchBounds.maxZ) / 2);
+  try {
+    await bot.lookAt(new Vec3(targetX + 0.5, targetY + 0.5, targetZ + 0.5), false);
+  } catch (error) {
+    log('warn', `Cinematic worker lookAt failed for ${bot.username}: ${formatError(error)}`);
+  }
+
+  return moved;
+}
+
+async function resolveLandmarkCandidatesWithCatalog(
   autonomy: LandmarkAutonomyService,
   prompt: string,
   cultureHint: string | undefined,
@@ -1587,12 +2325,12 @@ async function resolveLandmarkCandidatesWithGrabCraft(
   candidateLimit: number
 ): Promise<{
   candidates: SelectLandmarkResult[];
-  lookup?: GrabCraftLookupResult;
-  mappedLookup?: GrabCraftLookupCandidate;
+  lookup?: CatalogLookupResult;
+  mappedLookup?: CatalogLookupCandidate;
 }> {
   const localCandidates = await autonomy.discoverLandmarkCandidates(prompt, cultureHint, sizeHint, candidateLimit);
   const specs = await autonomy.listLandmarkSpecs();
-  const lookup = await getGrabCraftLookupService().lookupLandmarks({
+  const lookup = await getCatalogLookupService().lookupLandmarks({
     prompt,
     cultureHint,
     specs,
@@ -1607,10 +2345,10 @@ async function resolveLandmarkCandidatesWithGrabCraft(
       merged.push({
         spec: mappedSpec,
         score: Math.max(localCandidates[0]?.score ?? 0, mappedLookup.score + 5),
-        recommendedScale: recommendScaleForGrabCraftCandidate(mappedLookup, sizeHint),
+        recommendedScale: recommendScaleForCatalogCandidate(mappedLookup, sizeHint),
         matchedKeywords: mappedLookup.matchedTokens,
         rationale:
-          `GrabCraft lookup matched "${mappedLookup.title}" via query "${mappedLookup.query}" ` +
+          `Model lookup matched "${mappedLookup.title}" via query "${mappedLookup.query}" ` +
           `(${mappedLookup.url})`
       });
     }
@@ -1942,6 +2680,13 @@ async function enforceMutatingOperationGuard(
       (x, y, zCoord) => bot.blockAt(new Vec3(x, y, zCoord))?.name ?? null
     );
     enforceDensityGuard(density, DEFAULT_SAFETY_LIMITS);
+  }
+}
+
+async function enforceReservationOnly(owner: string, bounds: BoundingBox): Promise<void> {
+  const reservation = await coordinationStore.verifyReservation(owner, bounds);
+  if (!reservation.ok) {
+    throw new Error(reservation.message);
   }
 }
 
@@ -2591,10 +3336,10 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
     }
   );
 
-  // 14. lookup-grabcraft-landmarks
+  // 14. lookup-catalog-landmarks
   factory.registerTool(
-    "lookup-grabcraft-landmarks",
-    "Search grabcraft.com for landmark/building candidates related to a user prompt and map matching results onto supported local templates when possible.",
+    "lookup-catalog-landmarks",
+    "Search the approved model library for landmark/building candidates related to a user prompt and map matching results onto supported local templates when possible.",
     {
       prompt: z.string().min(1).describe("User mission prompt describing the requested landmark or cultural structure"),
       cultureHint: z.string().optional().describe("Optional culture hint, e.g. USA or France"),
@@ -2607,7 +3352,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
       const limit = Math.max(1, Math.min(8, toInt(params.limit ?? 5)));
 
-      const lookup = await getGrabCraftLookupService().lookupLandmarks({
+      const lookup = await getCatalogLookupService().lookupLandmarks({
         prompt,
         cultureHint,
         specs,
@@ -2616,13 +3361,13 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
 
       if (lookup.candidates.length === 0) {
         return factory.createResponse(
-          `GrabCraft lookup found no candidates for prompt="${prompt}" queries=${lookup.queries.join(',') || 'none'}`
+          `Model lookup found no candidates for prompt="${prompt}" queries=${lookup.queries.join(',') || 'none'}`
         );
       }
 
       return factory.createResponse(
-        `GrabCraft queries=${lookup.queries.join(' | ')}\n` +
-        lookup.candidates.map((candidate, index) => `${index + 1}. ${formatGrabCraftLookupCandidate(candidate)}`).join('\n')
+        `Model library queries=${lookup.queries.join(' | ')}\n` +
+        lookup.candidates.map((candidate, index) => `${index + 1}. ${formatCatalogLookupCandidate(candidate)}`).join('\n')
       );
     }
   );
@@ -2658,7 +3403,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 16. select-landmark-spec
   factory.registerTool(
     "select-landmark-spec",
-    "Select the best landmark template for a user prompt. Uses the active local landmark bank and can prefer a GrabCraft-matched local template when site lookup finds a stronger match.",
+    "Select the best landmark template for a user prompt. Uses the active local landmark bank and can prefer an imported-model match when site lookup finds a stronger match.",
     {
       prompt: z.string().min(1).describe("User mission prompt describing the landmark/building intent"),
       cultureHint: z.string().optional().describe("Optional culture hint, e.g. France or Netherlands"),
@@ -2670,7 +3415,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const cultureHint = params.cultureHint ? String(params.cultureHint) : undefined;
       const sizeHint = params.sizeHint ? String(params.sizeHint) : undefined;
 
-      const resolution = await resolveLandmarkCandidatesWithGrabCraft(
+      const resolution = await resolveLandmarkCandidatesWithCatalog(
         autonomy,
         prompt,
         cultureHint,
@@ -2681,7 +3426,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const styles = Object.keys(selected.spec.styles).join(',');
       const scales = Object.keys(selected.spec.scaleVariants).join(',');
       const sourceNote = resolution.mappedLookup
-        ? ` lookupSource=grabcraft.com matchedTitle="${resolution.mappedLookup.title}" matchedUrl=${resolution.mappedLookup.url}.`
+        ? ` lookupSource=the approved model library matchedTitle="${resolution.mappedLookup.title}" matchedUrl=${resolution.mappedLookup.url}.`
         : '';
 
       return factory.createResponse(
@@ -2696,7 +3441,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   // 17. plan-landmark-mission
   factory.registerTool(
     "plan-landmark-mission",
-    "High-level landmark planner: discover candidates, consult GrabCraft when needed, pick the best buildable landmark, auto-place it, compile the graph, and emit dispatch waves for the orchestrator.",
+    "High-level landmark planner: discover candidates, consult the approved model library when needed, pick the best buildable landmark, auto-place it, compile the graph, and emit dispatch waves for the orchestrator.",
     {
       prompt: z.string().min(1).describe("User mission prompt describing the requested landmark or cultural structure"),
       originX: z.coerce.number().describe("Requested build origin X"),
@@ -2713,7 +3458,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns across the structural footprint during auto-placement (default: 0)"),
       waterBufferBlocks: z.coerce.number().optional().describe("Reject auto-placement sites too close to water (default: 1)"),
       candidateLimit: z.coerce.number().optional().describe("Number of ranked candidates to try before failing (default: 3)"),
-      allowLocalSpecFallback: z.coerce.boolean().optional().describe("Allow fallback to simplified local landmark specs if live GrabCraft import fails (default: false)")
+      allowLocalSpecFallback: z.coerce.boolean().optional().describe("Allow fallback to simplified local landmark specs if live model import fails (default: false)")
     },
     async (params: any) => {
       const autonomy = getLandmarkAutonomyService();
@@ -2726,7 +3471,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         ? false
         : Boolean(params.allowLocalSpecFallback);
 
-      const resolution = await resolveLandmarkCandidatesWithGrabCraft(
+      const resolution = await resolveLandmarkCandidatesWithCatalog(
         autonomy,
         prompt,
         cultureHint,
@@ -2738,7 +3483,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       let compiled: {
         graph: BuildGraph;
         placementSummary: string;
-        source: 'grabcraft' | 'local-spec';
+        source: 'catalog' | 'local-spec';
         selectedName: string;
         selectedSpecId: string;
         selectedCulture: string;
@@ -2754,11 +3499,11 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
 
       for (const candidate of lookupCandidates.slice(0, candidateLimit)) {
         try {
-          const imported = await compileGrabCraftGraphWithPlacement(bot, autonomy, {
+          const imported = await compileCatalogGraphWithPlacement(bot, autonomy, {
             prompt,
             candidate,
             cultureHint,
-            sizeHint: recommendScaleForGrabCraftCandidate(candidate, sizeHint),
+            sizeHint: recommendScaleForCatalogCandidate(candidate, sizeHint),
             targetDurationMinutes: params.targetDurationMinutes != null
               ? toInt(params.targetDurationMinutes)
               : undefined,
@@ -2775,7 +3520,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
           compiled = {
             graph: imported.graph,
             placementSummary: imported.placementSummary,
-            source: 'grabcraft',
+            source: 'catalog',
             selectedName: imported.model.source.title,
             selectedSpecId: imported.graph.specId,
             selectedCulture: imported.graph.culture,
@@ -2783,7 +3528,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
           };
           break;
         } catch (error) {
-          failedCandidates.push(`grabcraft:${candidate.title}: ${formatError(error)}`);
+          failedCandidates.push(`catalog:${candidate.title}: ${formatError(error)}`);
         }
       }
 
@@ -2826,14 +3571,14 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
 
       if (!compiled) {
         const lookupFailureSummary = resolution.lookup?.candidates?.length
-          ? ` GrabCraft top results: ${resolution.lookup.candidates
+          ? ` Model library top results: ${resolution.lookup.candidates
               .slice(0, 3)
-              .map((candidate) => formatGrabCraftLookupCandidate(candidate))
+              .map((candidate) => formatCatalogLookupCandidate(candidate))
               .join(' | ')}`
           : '';
         throw new Error(
-          `Could not plan a landmark mission for '${prompt}' from GrabCraft. ` +
-          `Live GrabCraft import is required for this tool. ` +
+          `Could not plan a landmark mission for '${prompt}' from the approved model library. ` +
+          `Live model import is required for this tool. ` +
           `Tried candidates: ${failedCandidates.join(' | ') || 'none'}.${lookupFailureSummary}`
         );
       }
@@ -2857,7 +3602,7 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const lookupSummary = resolution.lookup?.candidates?.length
         ? resolution.lookup.candidates
             .slice(0, Math.min(2, resolution.lookup.candidates.length))
-            .map((candidate) => formatGrabCraftLookupCandidate(candidate))
+            .map((candidate) => formatCatalogLookupCandidate(candidate))
             .join(' | ')
         : 'none';
 
@@ -2868,8 +3613,303 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         `readyWorkers=${readyWorkers.join(',') || 'none'} ` +
         `readyPackets=${readyPackets.join(' | ') || 'none'}\n` +
         `candidateSummary=${candidateSummary || 'none'}\n` +
-        `grabcraftSummary=${lookupSummary}` +
+        `catalogSummary=${lookupSummary}` +
         (failedCandidates.length > 0 ? `\nskipped=${failedCandidates.slice(0, 2).join(' | ')}` : '')
+      );
+    }
+  );
+
+  factory.registerTool(
+    "build-santander-hq-staged",
+    "Build the registered Santander HQ full-campus .ots_blocks model one named area at a time using the safe tiled placer.",
+    {
+      filePath: z.string().min(1).optional().describe("Optional absolute path to a Santander .ots_blocks file"),
+      modelName: z.string().min(1).optional().describe("Optional registered model name. Defaults to 'Santander HQ Full Campus'."),
+      title: z.string().optional().describe("Optional display title for the imported model"),
+      centerX: z.coerce.number().optional().describe("Build center X for the full campus (default: 0)"),
+      centerZ: z.coerce.number().optional().describe("Build center Z for the full campus (default: 0)"),
+      baseY: z.coerce.number().optional().describe("Minimum build Y (default: 64)"),
+      clearBeforeBuild: z.coerce.boolean().optional().describe("Clear the whole campus footprint before staged placement (default: true)"),
+      clearYMax: z.coerce.number().optional().describe("Top Y to clear before placement (default: baseY + 51)"),
+      batchSize: z.coerce.number().optional().describe("RCON commands per batch for the Python tiled placer (default: 5000)"),
+      tileSize: z.coerce.number().optional().describe("Forceload/placement tile width and depth (default: 128)"),
+      stageDelaySeconds: z.coerce.number().optional().describe("Delay between named areas (default: 1.5)"),
+      batchDelaySeconds: z.coerce.number().optional().describe("Delay between placement batches (default: 0.05)"),
+      dryRun: z.coerce.boolean().optional().describe("Print the staged build plan without changing Minecraft (default: false)")
+    },
+    async (params: any) => {
+      requireOrchestratorReservationControl(getOwner(), 'build-santander-hq-staged');
+
+      const resolved = await resolveOtsBlockModelReference({
+        filePath: params.filePath ? String(params.filePath) : undefined,
+        modelName: params.modelName ? String(params.modelName) : 'Santander HQ Full Campus',
+        title: params.title ? String(params.title) : undefined
+      });
+      const centerX = params.centerX == null ? 0 : toInt(params.centerX);
+      const centerZ = params.centerZ == null ? 0 : toInt(params.centerZ);
+      const baseY = params.baseY == null ? 64 : toInt(params.baseY);
+      const clearBeforeBuild = params.clearBeforeBuild == null ? true : Boolean(params.clearBeforeBuild);
+      const clearYMax = params.clearYMax == null ? baseY + 51 : toInt(params.clearYMax);
+      const batchSize = Math.max(100, Math.min(10000, params.batchSize == null ? 5000 : toInt(params.batchSize)));
+      const tileSize = Math.max(32, Math.min(256, params.tileSize == null ? 128 : toInt(params.tileSize)));
+      const stageDelaySeconds = Math.max(0, Math.min(30, params.stageDelaySeconds == null ? 1.5 : Number(params.stageDelaySeconds)));
+      const batchDelaySeconds = Math.max(0, Math.min(2, params.batchDelaySeconds == null ? 0.05 : Number(params.batchDelaySeconds)));
+      const dryRun = params.dryRun == null ? false : Boolean(params.dryRun);
+
+      const scriptArgs = [
+        '--input', resolved.filePath,
+        '--center-x', String(centerX),
+        '--center-z', String(centerZ),
+        '--base-y', String(baseY),
+        '--axis-order', 'xyz',
+        '--batch-size', String(batchSize),
+        '--tile-size', String(tileSize),
+        '--clear-y-min', String(baseY),
+        '--clear-y-max', String(clearYMax),
+        '--stage-delay', String(stageDelaySeconds),
+        '--batch-delay', String(batchDelaySeconds)
+      ];
+      if (!clearBeforeBuild) {
+        scriptArgs.push('--no-clear-before-build');
+      }
+      if (dryRun) {
+        scriptArgs.push('--dry-run');
+      }
+
+      const result = await runProjectPythonScript('tools/place_santander_hq_staged.py', scriptArgs);
+      return factory.createResponse(
+        `Santander HQ staged build ${dryRun ? 'plan ready' : 'complete'}. selectedSource=ots-blocks ` +
+        `selectedName="${resolved.title}" modelId=${resolved.id ?? 'ad-hoc'} center=(${centerX},${centerZ}) ` +
+        `baseY=${baseY} clearBeforeBuild=${clearBeforeBuild} batchSize=${batchSize} tileSize=${tileSize} ` +
+        `stageDelaySeconds=${stageDelaySeconds} batchDelaySeconds=${batchDelaySeconds}\n` +
+        `${result.stdoutTail || 'No staged build output captured.'}` +
+        (result.stderrTail ? `\nstderrTail=${result.stderrTail}` : '')
+      );
+    }
+  );
+
+  factory.registerTool(
+    "build-ots-model-direct-recording",
+    "Fast recording mode: clear the prepared plot and place a registered/file-based .ots_blocks model directly from bottom to top without zones, workers, or retries.",
+    {
+      filePath: z.string().min(1).optional().describe("Optional absolute path to a local .ots_blocks file"),
+      modelName: z.string().min(1).optional().describe("Optional registered OTS model name. Defaults to 'local Sydney Opera House'."),
+      title: z.string().optional().describe("Optional display title for the imported model"),
+      centerX: z.coerce.number().optional().describe("Build center X (default: 0)"),
+      centerZ: z.coerce.number().optional().describe("Build center Z (default: 0)"),
+      baseY: z.coerce.number().optional().describe("Minimum build Y (default: 68)"),
+      clearPlot: z.coerce.boolean().optional().describe("Clear and prepare the recording plot first (default: true)"),
+      clearRadius: z.coerce.number().optional().describe("Prepared plot radius around world origin when clearPlot=true (default: 70)"),
+      clearTopY: z.coerce.number().optional().describe("Top Y to clear when clearPlot=true (default: max(160, model top + 8))"),
+      batchSize: z.coerce.number().optional().describe("RCON commands per layer batch (default: 5000)"),
+      layerDelayMs: z.coerce.number().optional().describe("Optional delay between layers in milliseconds (default: 0)"),
+      targetDurationSeconds: z.coerce.number().optional().describe("Target total recording duration in seconds; overrides layerDelayMs when > 0"),
+      showAgentChoreography: z.coerce.boolean().optional().describe("Move a few visible bots around the active layer perimeter (default: false)"),
+      emitCoordinationChat: z.coerce.boolean().optional().describe("Emit lightweight Minecraft chat coordination messages during the direct build (default: same as showAgentChoreography)"),
+      choreographyAgents: z.string().optional().describe("Comma-separated bot usernames to move during choreography"),
+      agentMoveIntervalLayers: z.coerce.number().optional().describe("Move choreography bots every N layers (default: 1)"),
+      chatIntervalLayers: z.coerce.number().optional().describe("Emit coordination chat every N layers (default: 5)"),
+      stabilizeGravityBlocks: z.coerce.boolean().optional().describe("Replace falling concrete-powder/sand/gravel with stable equivalents before building (default: true)")
+    },
+    async (params: any) => {
+      requireOrchestratorReservationControl(getOwner(), 'build-ots-model-direct-recording');
+
+      const resolved = await resolveOtsBlockModelReference({
+        filePath: params.filePath ? String(params.filePath) : undefined,
+        modelName: params.modelName ? String(params.modelName) : 'local Sydney Opera House',
+        title: params.title ? String(params.title) : undefined
+      });
+      const model = await importOtsBlockModelAsCatalogModel({
+        filePath: resolved.filePath,
+        title: resolved.title,
+        stabilizeGravityBlocks: params.stabilizeGravityBlocks == null
+          ? true
+          : Boolean(params.stabilizeGravityBlocks)
+      });
+
+      const sourceBounds = model.stats.bounds;
+      if (!sourceBounds) {
+        throw new Error(`Imported OTS model '${resolved.title}' has no bounds.`);
+      }
+
+      const width = sourceBounds.maxX - sourceBounds.minX + 1;
+      const depth = sourceBounds.maxZ - sourceBounds.minZ + 1;
+      const centerX = params.centerX == null ? 0 : toInt(params.centerX);
+      const centerZ = params.centerZ == null ? 0 : toInt(params.centerZ);
+      const baseY = params.baseY == null ? 68 : toInt(params.baseY);
+      const originX = centerX - Math.floor(width / 2);
+      const originZ = centerZ - Math.floor(depth / 2);
+      const plan = buildPlacementPlan(model, originX, baseY, originZ);
+
+      if (plan.translatedBlocks.length === 0) {
+        throw new Error(`OTS model '${resolved.title}' produced no placeable blocks.`);
+      }
+
+      const bounds = placementBounds(plan.translatedBlocks);
+      const batchSize = Math.max(1, Math.min(500, params.batchSize == null ? 300 : toInt(params.batchSize)));
+      const clearPlot = params.clearPlot == null ? true : Boolean(params.clearPlot);
+      const clearRadius = Math.max(16, Math.min(256, params.clearRadius == null ? 70 : toInt(params.clearRadius)));
+      const clearTopY = Math.max(
+        bounds.maxY + 2,
+        params.clearTopY == null ? Math.max(160, bounds.maxY + 8) : toInt(params.clearTopY)
+      );
+      const layers = groupPlacementBlocksByLayer(plan.translatedBlocks);
+      const targetDurationSeconds = params.targetDurationSeconds == null
+        ? 0
+        : Math.max(0, Math.min(300, Number(params.targetDurationSeconds)));
+      const layerDelayMs = targetDurationSeconds > 0
+        ? Math.max(0, Math.min(5000, Math.floor((targetDurationSeconds * 1000) / Math.max(1, layers.length))))
+        : Math.max(0, Math.min(5000, params.layerDelayMs == null ? 0 : toInt(params.layerDelayMs)));
+      const showAgentChoreography = params.showAgentChoreography == null
+        ? false
+        : Boolean(params.showAgentChoreography);
+      const emitCoordinationChat = params.emitCoordinationChat == null
+        ? showAgentChoreography
+        : Boolean(params.emitCoordinationChat);
+      const choreographyAgents = parseRecordingAgentList(params.choreographyAgents);
+      const agentMoveIntervalLayers = Math.max(1, Math.min(12, params.agentMoveIntervalLayers == null ? 1 : toInt(params.agentMoveIntervalLayers)));
+      const chatIntervalLayers = Math.max(1, Math.min(12, params.chatIntervalLayers == null ? 5 : toInt(params.chatIntervalLayers)));
+      let commandCount = 0;
+      let batchCount = 0;
+
+      if (clearPlot) {
+        await streamRconCommands(
+          preparedRecordingPlotCommands(baseY, clearTopY, clearRadius),
+          PROJECT_ROOT_DIR
+        );
+      }
+
+      const forceloadAdd = `/forceload add ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
+      const forceloadRemove = `/forceload remove ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
+      await streamRconCommands([forceloadAdd], PROJECT_ROOT_DIR);
+      try {
+        if (emitCoordinationChat) {
+          await streamRconCommands([
+            tellrawCommand(
+              `[SAM] Coordination: direct recording build started for ${resolved.title}. ` +
+              `Reliable layer placement stays centralized; visible agents mirror the active layer.`
+            )
+          ], PROJECT_ROOT_DIR);
+        }
+
+        for (let layerIndex = 0; layerIndex < layers.length; layerIndex += 1) {
+          const layer = layers[layerIndex];
+          const layerNumber = layerIndex + 1;
+          const choreographyCommands = recordingChoreographyCommands({
+            bounds,
+            layerIndex: layerNumber,
+            totalLayers: layers.length,
+            layerY: layer.y,
+            baseY,
+            agents: choreographyAgents,
+            moveAgents: showAgentChoreography,
+            emitChat: emitCoordinationChat,
+            chatIntervalLayers,
+            moveIntervalLayers: agentMoveIntervalLayers
+          });
+          if (choreographyCommands.length > 0) {
+            await streamRconCommands(choreographyCommands, PROJECT_ROOT_DIR);
+          }
+
+          const layerCommands = placementRunCommands(layer.blocks);
+          for (const batch of chunkCommands(layerCommands, batchSize)) {
+            await streamRconCommands(batch, PROJECT_ROOT_DIR);
+            commandCount += batch.length;
+            batchCount += 1;
+            if (DIRECT_RECORDING_RCON_BATCH_DELAY_MS > 0) {
+              await delay(DIRECT_RECORDING_RCON_BATCH_DELAY_MS);
+            }
+          }
+          if (layerDelayMs > 0) {
+            await delay(layerDelayMs);
+          }
+        }
+      } finally {
+        try {
+          await streamRconCommands([forceloadRemove], PROJECT_ROOT_DIR);
+        } catch (error) {
+          log('warn', `Failed to remove direct recording forceload for ${resolved.title}: ${formatError(error)}`);
+        }
+      }
+
+      return factory.createResponse(
+        `Direct recording build complete. selectedSource=ots-blocks selectedName="${resolved.title}" ` +
+        `modelId=${resolved.id ?? 'ad-hoc'} blocks=${plan.translatedBlocks.length} layers=${layers.length} ` +
+        `commands=${commandCount} batches=${batchCount} bounds=${formatBounds(bounds)} ` +
+        `clearPlot=${clearPlot} layerDelayMs=${layerDelayMs} targetDurationSeconds=${targetDurationSeconds} ` +
+        `choreography=${showAgentChoreography} agents=${showAgentChoreography ? choreographyAgents.join(',') : 'none'} ` +
+        `skippedPalette=${plan.skippedPalette.length}`
+      );
+    }
+  );
+
+  factory.registerTool(
+    "plan-ots-block-model-mission",
+    "Import a registered or file-based .ots_blocks model, auto-place it on valid land, compile exact shard packets, and emit a worker-ready graph for the orchestrator.",
+    {
+      filePath: z.string().min(1).optional().describe("Optional absolute path to a local .ots_blocks file"),
+      modelName: z.string().min(1).optional().describe("Optional registered OTS model name or alias, e.g. 'local Architecture Tower'"),
+      title: z.string().optional().describe("Optional display title for the imported model"),
+      originX: z.coerce.number().describe("Requested build center X"),
+      originZ: z.coerce.number().describe("Requested build center Z"),
+      targetDurationMinutes: z.coerce.number().optional().describe("Target autonomy runtime in minutes (default: 30)"),
+      baseY: z.coerce.number().optional().describe("Optional explicit base Y. If omitted, sampled from terrain."),
+      autoPlace: z.coerce.boolean().optional().describe("Auto-pick the nearest usable dry site for the model footprint (default: true)"),
+      searchRadius: z.coerce.number().optional().describe("Auto-placement search radius around requested center (default: 80)"),
+      searchStep: z.coerce.number().optional().describe("Auto-placement search step size"),
+      maxHeightDelta: z.coerce.number().optional().describe("Allowed terrain delta across the structural footprint during auto-placement (default: 4)"),
+      maxManMadeColumns: z.coerce.number().optional().describe("Allowed man-made columns across the structural footprint during auto-placement (default: 0)"),
+      waterBufferBlocks: z.coerce.number().optional().describe("Reject auto-placement sites too close to water (default: 1)"),
+      stabilizeGravityBlocks: z.coerce.boolean().optional().describe("Replace falling concrete-powder/sand/gravel with stable equivalents before building (default: true)")
+    },
+    async (params: any) => {
+      const autonomy = getLandmarkAutonomyService();
+      const bot = getBot();
+      const resolved = await resolveOtsBlockModelReference({
+        filePath: params.filePath ? String(params.filePath) : undefined,
+        modelName: params.modelName ? String(params.modelName) : undefined,
+        title: params.title ? String(params.title) : undefined
+      });
+      const compiled = await compileOtsBlockModelGraphWithPlacement(bot, autonomy, {
+        prompt: `Build local OTS block model ${resolved.title}`,
+        filePath: resolved.filePath,
+        title: resolved.title,
+        sourceRef: resolved.resolvedVia === 'registry'
+          ? `registry:${resolved.id ?? resolved.title}`
+          : resolved.filePath,
+        sourceId: resolved.id,
+        targetDurationMinutes: params.targetDurationMinutes != null
+          ? toInt(params.targetDurationMinutes)
+          : undefined,
+        originX: toInt(params.originX),
+        originZ: toInt(params.originZ),
+        baseY: params.baseY == null ? undefined : toInt(params.baseY),
+        autoPlace: params.autoPlace == null ? undefined : Boolean(params.autoPlace),
+        searchRadius: params.searchRadius == null ? undefined : toInt(params.searchRadius),
+        searchStep: params.searchStep == null ? undefined : toInt(params.searchStep),
+        maxHeightDelta: params.maxHeightDelta == null ? undefined : toInt(params.maxHeightDelta),
+        maxManMadeColumns: params.maxManMadeColumns == null ? undefined : toInt(params.maxManMadeColumns),
+        waterBufferBlocks: params.waterBufferBlocks == null ? undefined : toInt(params.waterBufferBlocks),
+        stabilizeGravityBlocks: params.stabilizeGravityBlocks == null ? undefined : Boolean(params.stabilizeGravityBlocks)
+      });
+      const graph = compiled.graph;
+      const readyPackets = graph.nodes
+        .filter((node) => node.status === 'ready')
+        .slice(0, 6)
+        .map((node) => (
+          `${node.assignedWorker}:${node.taskId}:${node.toolPlan.primaryTool}:${node.zoneId}`
+        ));
+      const readyWorkers = Array.from(new Set(
+        graph.nodes
+          .filter((node) => node.status === 'ready')
+          .map((node) => node.assignedWorker)
+      ));
+
+      return factory.createResponse(
+        `Mission plan ready. selectedSource=ots-blocks selectedSpec=${graph.specId} selectedName="${graph.specName}" ` +
+        `resolution=${resolved.resolvedVia} selectedModelId=${resolved.id ?? 'ad-hoc'} matchedAlias="${resolved.matchedAlias ?? resolved.title}" ` +
+        `graphId=${graph.graphId} tasks=${graph.nodes.length} blockBudget=${graph.expectedBlocks}. ${compiled.placementSummary}\n` +
+        `readyWorkers=${readyWorkers.join(',') || 'none'} readyPackets=${readyPackets.join(' | ') || 'none'}`
       );
     }
   );
@@ -3328,10 +4368,10 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
   );
 
   factory.registerTool(
-    "place-grabcraft-shard",
-    "Place one exact GrabCraft shard from a freshly imported placement artifact. Requires an active claimed zone.",
+    "place-catalog-shard",
+    "Place one exact imported model shard from a freshly imported placement artifact. Requires an active claimed zone.",
     {
-      placementFile: z.string().min(1).describe("Absolute path to a grabcraft-placement-plan artifact"),
+      placementFile: z.string().min(1).describe("Absolute path to a catalog-placement-plan artifact"),
       shardId: z.string().min(1).describe("Shard id inside the placement artifact")
     },
     async (params: any) => {
@@ -3340,11 +4380,11 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
       const placementFile = path.resolve(String(params.placementFile));
       const shardId = String(params.shardId);
       const raw = await fs.readFile(placementFile, 'utf8');
-      const artifact = JSON.parse(raw) as GrabCraftPlacementArtifact;
+      const artifact = JSON.parse(raw) as CatalogPlacementArtifact;
 
-      if (artifact.kind !== 'grabcraft-placement-plan') {
+      if (artifact.kind !== 'catalog-placement-plan') {
         throw new Error(
-          `Expected a grabcraft-placement-plan artifact, got '${String((artifact as { kind?: string }).kind ?? 'unknown')}'.`
+          `Expected a catalog-placement-plan artifact, got '${String((artifact as { kind?: string }).kind ?? 'unknown')}'.`
         );
       }
 
@@ -3364,42 +4404,64 @@ function registerEssentialTools(factory: ToolFactory, getBot: () => any, getOwne
         shard.bounds.maxY,
         shard.bounds.maxZ
       );
-      await enforceMutatingOperationGuard(bot, owner, bounds, shard.blockCount, 0);
+      await enforceReservationOnly(owner, bounds);
 
-      const centerX = Math.floor((bounds.minX + bounds.maxX) / 2);
-      const centerZ = Math.floor((bounds.minZ + bounds.maxZ) / 2);
-      await walkBotNearXZ(bot, centerX, centerZ, 4);
-
-      const placementCommands = shard.blocks.map((block) => (
-        `/setblock ${block.x} ${block.y} ${block.z} ${block.blockState}`
-      ));
-      const commandBatches = chunkCommands(placementCommands, GRABCRAFT_RCON_BATCH_SIZE);
+      const cinematicBatches = splitPlacementBlocksForSafeCinematicBatches(
+        shard.blocks,
+        CATALOG_RCON_BATCH_SIZE
+      );
       const forceloadAdd = `/forceload add ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
       const forceloadRemove = `/forceload remove ${bounds.minX} ${bounds.minZ} ${bounds.maxX} ${bounds.maxZ}`;
+      const clearBlockingEntities =
+        `/kill @e[type=!player,x=${bounds.minX},y=${Math.max(0, bounds.minY - 2)},z=${bounds.minZ},` +
+        `dx=${bounds.maxX - bounds.minX},dy=${bounds.maxY - bounds.minY + 4},dz=${bounds.maxZ - bounds.minZ}]`;
+      let movementSteps = 0;
 
       await streamRconCommands([forceloadAdd], PROJECT_ROOT_DIR);
       try {
-        for (const batch of commandBatches) {
-          await streamRconCommands(batch, PROJECT_ROOT_DIR);
+        await streamRconCommands([clearBlockingEntities], PROJECT_ROOT_DIR);
+        for (let batchIndex = 0; batchIndex < cinematicBatches.length; batchIndex += 1) {
+          const batchBlocks = cinematicBatches[batchIndex];
+          const batchBounds = boundsForPlacementBlocks(batchBlocks);
+          validateSafetyLimits({
+            bounds: batchBounds,
+            plannedOperations: batchBlocks.length,
+            plannedAirOperations: 0
+          }, CATALOG_BATCH_SAFETY_LIMITS);
+          await enforceReservationOnly(owner, batchBounds);
+
+          const moved = await animateBotForPlacementBatch(bot, bounds, batchBounds, batchIndex);
+          if (moved) {
+            movementSteps += 1;
+          }
+
+          await streamRconCommands(
+            batchBlocks.map((block) => `/setblock ${block.x} ${block.y} ${block.z} ${block.blockState}`),
+            PROJECT_ROOT_DIR
+          );
+
+          if (CATALOG_CINEMATIC_BATCH_DELAY_MS > 0) {
+            await delay(CATALOG_CINEMATIC_BATCH_DELAY_MS);
+          }
         }
       } finally {
         try {
           await streamRconCommands([forceloadRemove], PROJECT_ROOT_DIR);
         } catch (error) {
-          log('warn', `Failed to remove GrabCraft forceload for ${shardId}: ${formatError(error)}`);
+          log('warn', `Failed to remove model forceload for ${shardId}: ${formatError(error)}`);
         }
       }
 
       await autoCompleteGraphTaskForMutation(
         owner,
         bounds,
-        `Placed exact GrabCraft shard ${shardId} from ${artifact.source.title}`,
+        `Placed exact imported model shard ${shardId} from ${artifact.source.title}`,
         shard.blockCount
       );
 
       return factory.createResponse(
-        `Placed exact GrabCraft shard ${shardId} from "${artifact.source.title}" ` +
-        `blocks=${shard.blockCount} batches=${commandBatches.length} bounds=${formatBounds(bounds)} ` +
+        `Placed exact imported model shard ${shardId} from "${artifact.source.title}" ` +
+        `blocks=${shard.blockCount} safeBatches=${cinematicBatches.length} movementSteps=${movementSteps} bounds=${formatBounds(bounds)} ` +
         `source=${artifact.source.pageUrl}`
       );
     }

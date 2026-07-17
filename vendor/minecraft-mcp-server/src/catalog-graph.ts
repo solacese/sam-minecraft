@@ -1,16 +1,16 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { normalizeBounds, type BoundingBox } from './build-coordination.js';
-import type { GrabCraftModelArtifact } from './grabcraft-import.js';
-import { buildPlacementPlan, type PlacementBlock } from './grabcraft-place.js';
+import type { CatalogModelArtifact } from './catalog-import.js';
+import { buildPlacementPlan, type PlacementBlock } from './catalog-place.js';
 
-type GrabCraftRole = 'foundation' | 'walls' | 'roof' | 'ornament';
+type CatalogRole = 'foundation' | 'walls' | 'roof' | 'ornament';
 type PartitionBlocks = { name: string; blocks: PlacementBlock[] };
 
-export interface GrabCraftPlacementShard {
+export interface CatalogPlacementShard {
   shardId: string;
   label: string;
-  role: GrabCraftRole;
+  role: CatalogRole;
   assignedWorker: string;
   bounds: BoundingBox;
   blockCount: number;
@@ -18,9 +18,9 @@ export interface GrabCraftPlacementShard {
   blocks: PlacementBlock[];
 }
 
-export interface GrabCraftPlacementArtifact {
+export interface CatalogPlacementArtifact {
   schemaVersion: '1.0';
-  kind: 'grabcraft-placement-plan';
+  kind: 'catalog-placement-plan';
   graphId: string;
   source: {
     pageUrl: string;
@@ -41,21 +41,30 @@ export interface GrabCraftPlacementArtifact {
     bounds: BoundingBox | null;
   };
   skippedPalette: Array<{ paletteKey: string; reason: string }>;
-  shards: GrabCraftPlacementShard[];
+  shards: CatalogPlacementShard[];
 }
 
-export interface CreateGrabCraftPlacementArtifactInput {
+export interface CreateCatalogPlacementArtifactInput {
   graphId: string;
-  model: GrabCraftModelArtifact;
+  model: CatalogModelArtifact;
   originX: number;
   originY: number;
   originZ: number;
 }
 
-const PARTITION_WORKERS = ['MinecraftAgent', 'BuildBeaAgent', 'MonumentMarcAgent'];
+const PARTITION_WORKERS = [
+  'MinecraftAgent',
+  'BuildBeaAgent',
+  'MonumentMarcAgent',
+  'SupplySidAgent',
+  'ForestFinnAgent',
+  'DesignDoraAgent'
+];
 const DEFAULT_BAND_HEIGHT = 6;
-const MIN_SPLIT_BLOCKS = 700;
-const MAX_SHARD_VOLUME = 4000;
+const MIN_SPLIT_BLOCKS = 1200;
+const MAX_SHARD_FOOTPRINT = 1000;
+const MAX_SHARD_BLOCKS = 2500;
+const MAX_SHARD_VOLUME = 12000;
 
 function slugify(value: string): string {
   return value
@@ -104,11 +113,15 @@ function boundsVolume(bounds: BoundingBox): number {
   );
 }
 
+function boundsFootprint(bounds: BoundingBox): number {
+  return (bounds.maxX - bounds.minX + 1) * (bounds.maxZ - bounds.minZ + 1);
+}
+
 function roleForBand(
   bandIndex: number,
   totalBands: number,
   delicateRatio: number
-): GrabCraftRole {
+): CatalogRole {
   if (delicateRatio >= 0.18) {
     return 'ornament';
   }
@@ -179,7 +192,11 @@ function splitBlocksToVolume(
   baseName: string
 ): PartitionBlocks[] {
   const bounds = shardBounds(blocks);
-  if (boundsVolume(bounds) <= MAX_SHARD_VOLUME || blocks.length < Math.max(64, Math.floor(MIN_SPLIT_BLOCKS / 4))) {
+  if (
+    boundsVolume(bounds) <= MAX_SHARD_VOLUME &&
+    boundsFootprint(bounds) <= MAX_SHARD_FOOTPRINT &&
+    blocks.length <= MAX_SHARD_BLOCKS
+  ) {
     return [{ name: baseName, blocks }];
   }
 
@@ -206,9 +223,9 @@ function splitBlocksToVolume(
   ];
 }
 
-export function createGrabCraftPlacementArtifact(
-  input: CreateGrabCraftPlacementArtifactInput
-): GrabCraftPlacementArtifact {
+export function createCatalogPlacementArtifact(
+  input: CreateCatalogPlacementArtifactInput
+): CatalogPlacementArtifact {
   const plan = buildPlacementPlan(
     input.model,
     input.originX,
@@ -217,29 +234,30 @@ export function createGrabCraftPlacementArtifact(
   );
 
   if (plan.translatedBlocks.length === 0) {
-    throw new Error('GrabCraft import produced no translated blocks.');
+    throw new Error('Model import produced no translated blocks.');
   }
 
   const minY = Math.min(...plan.translatedBlocks.map((block) => block.y));
   const maxY = Math.max(...plan.translatedBlocks.map((block) => block.y));
   const totalBands = Math.max(1, Math.ceil((maxY - minY + 1) / DEFAULT_BAND_HEIGHT));
   const footprintPartitions = splitFootprintBlocks(plan.translatedBlocks);
-  const shards: GrabCraftPlacementShard[] = [];
+  const shards: CatalogPlacementShard[] = [];
   let previousWaveShardIds: string[] = [];
+  let shardSequence = 0;
 
   for (let bandIndex = 0; bandIndex < totalBands; bandIndex += 1) {
     const bandMinY = minY + bandIndex * DEFAULT_BAND_HEIGHT;
     const bandMaxY = Math.min(maxY, bandMinY + DEFAULT_BAND_HEIGHT - 1);
     const currentWaveShardIds: string[] = [];
 
-    footprintPartitions.forEach((partition, partitionIndex) => {
+    footprintPartitions.forEach((partition) => {
       const bandBlocks = partition.blocks.filter((block) => block.y >= bandMinY && block.y <= bandMaxY);
       if (bandBlocks.length === 0) {
         return;
       }
 
       const subPartitions = splitBlocksToVolume(bandBlocks, partition.name);
-      subPartitions.forEach((subPartition, subIndex) => {
+      subPartitions.forEach((subPartition) => {
         const subBounds = shardBounds(subPartition.blocks);
         const delicateRatio =
           subPartition.blocks.filter((block) => isDelicateBlock(block.blockState)).length /
@@ -251,12 +269,13 @@ export function createGrabCraftPlacementArtifact(
           shardId,
           label: `${input.model.source.title} band ${bandIndex + 1} ${subPartition.name}`,
           role,
-          assignedWorker: workerForPartition(partitionIndex + subIndex),
+          assignedWorker: workerForPartition(shardSequence),
           bounds: subBounds,
           blockCount: subPartition.blocks.length,
           dependencies: [...previousWaveShardIds],
           blocks: subPartition.blocks
         });
+        shardSequence += 1;
       });
     });
 
@@ -268,7 +287,7 @@ export function createGrabCraftPlacementArtifact(
   const bounds = shardBounds(plan.translatedBlocks);
   return {
     schemaVersion: '1.0',
-    kind: 'grabcraft-placement-plan',
+    kind: 'catalog-placement-plan',
     graphId: input.graphId,
     source: {
       pageUrl: input.model.source.pageUrl,
@@ -293,9 +312,9 @@ export function createGrabCraftPlacementArtifact(
   };
 }
 
-export async function writeGrabCraftPlacementArtifact(
+export async function writeCatalogPlacementArtifact(
   outputDir: string,
-  artifact: GrabCraftPlacementArtifact
+  artifact: CatalogPlacementArtifact
 ): Promise<string> {
   await fs.mkdir(outputDir, { recursive: true });
   const filePath = path.join(
@@ -306,10 +325,10 @@ export async function writeGrabCraftPlacementArtifact(
   return filePath;
 }
 
-export async function writeGrabCraftModelArtifact(
+export async function writeCatalogModelArtifact(
   outputDir: string,
   graphId: string,
-  model: GrabCraftModelArtifact
+  model: CatalogModelArtifact
 ): Promise<string> {
   await fs.mkdir(outputDir, { recursive: true });
   const filePath = path.join(

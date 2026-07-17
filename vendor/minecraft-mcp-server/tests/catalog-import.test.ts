@@ -1,37 +1,37 @@
 import test from 'ava';
 import {
   flattenRenderObject,
-  parseGrabCraftCatalogPage,
-  parseGrabCraftObjectPage
-} from '../src/grabcraft-import.js';
+  parseCatalogCatalogPage,
+  parseCatalogObjectPage
+} from '../src/catalog-import.js';
 
-test('parseGrabCraftObjectPage extracts object metadata from page HTML', (t) => {
+test('parseCatalogObjectPage extracts object metadata from page HTML', (t) => {
   const html = `
     <html>
       <head>
-        <title>Arc de Triomphe, Paris - GrabCraft</title>
+        <title>Arc de Triomphe, Paris - Catalog</title>
       </head>
       <body>
         <h1 id="content-title">Arc de Triomphe, Paris</h1>
         <table>
           <tr><td class="parameter">Block Count</td><td class="value block_count">11957</td></tr>
         </table>
-        <script src="https://www.grabcraft.com/js/RenderObject/myRenderObject_1788.js"></script>
+        <script src="https://models.example.invalid/js/RenderObject/myRenderObject_1788.js"></script>
         <script>
           var dimY = 51;
           var dimX = 49;
           var dimZ = 25;
-          var base_url = "https://bprints.grabcraft.com/1788/Y/combined/";
+          var base_url = "https://blueprints.example.invalid/1788/Y/combined/";
           var totalPositions = 51;
         </script>
-        <script src="https://www.grabcraft.com/js/LayerMap/LayerMap_1555.js"></script>
+        <script src="https://models.example.invalid/js/LayerMap/LayerMap_1555.js"></script>
       </body>
     </html>
   `;
 
-  const parsed = parseGrabCraftObjectPage(
+  const parsed = parseCatalogObjectPage(
     html,
-    'https://www.grabcraft.com/minecraft/arc-de-triomphe-paris/sightseeing-buildings'
+    'https://models.example.invalid/minecraft/arc-de-triomphe-paris/sightseeing-buildings'
   );
 
   t.is(parsed.title, 'Arc de Triomphe, Paris');
@@ -39,17 +39,17 @@ test('parseGrabCraftObjectPage extracts object metadata from page HTML', (t) => 
   t.deepEqual(parsed.dimensions, { x: 49, y: 51, z: 25 });
   t.is(
     parsed.renderObjectScriptUrl,
-    'https://www.grabcraft.com/js/RenderObject/myRenderObject_1788.js'
+    'https://models.example.invalid/js/RenderObject/myRenderObject_1788.js'
   );
   t.is(
     parsed.layerMapScriptUrl,
-    'https://www.grabcraft.com/js/LayerMap/LayerMap_1555.js'
+    'https://models.example.invalid/js/LayerMap/LayerMap_1555.js'
   );
-  t.is(parsed.blueprintBaseUrl, 'https://bprints.grabcraft.com/1788/Y/combined/');
+  t.is(parsed.blueprintBaseUrl, 'https://blueprints.example.invalid/1788/Y/combined/');
   t.is(parsed.blueprintLayerCount, 51);
 });
 
-test('parseGrabCraftCatalogPage extracts current page items', (t) => {
+test('parseCatalogCatalogPage extracts current page items', (t) => {
   const html = `
     <html>
       <body>
@@ -58,7 +58,7 @@ test('parseGrabCraftCatalogPage extracts current page items', (t) => {
           <div class="product-box item-1">
             <div class="product-image">
               <a href="/minecraft/tauren-totem/towers" class="image" title="Tauren Totem">
-                <img src="https://www.grabcraft.com/files/products/thumb/thumb_tauren-totem-22304.png" alt="Tauren Totem" />
+                <img src="https://models.example.invalid/files/products/thumb/thumb_tauren-totem-22304.png" alt="Tauren Totem" />
               </a>
             </div>
             <div class="text-info">
@@ -74,7 +74,7 @@ test('parseGrabCraftCatalogPage extracts current page items', (t) => {
           <div class="product-box item-2">
             <div class="product-image">
               <a href="/minecraft/stone-obelisk-m/miscellaneous-162" class="image" title="Stone Obelisk M">
-                <img src="https://www.grabcraft.com/files/products/thumb/thumb_stone-obelisk-m-22291.png" alt="Stone Obelisk M" />
+                <img src="https://models.example.invalid/files/products/thumb/thumb_stone-obelisk-m-22291.png" alt="Stone Obelisk M" />
               </a>
             </div>
             <div class="text-info">
@@ -92,7 +92,7 @@ test('parseGrabCraftCatalogPage extracts current page items', (t) => {
     </html>
   `;
 
-  const parsed = parseGrabCraftCatalogPage(html, 'https://www.grabcraft.com/minecraft/sightseeing-buildings');
+  const parsed = parseCatalogCatalogPage(html, 'https://models.example.invalid/minecraft/sightseeing-buildings');
 
   t.is(parsed.source.title, 'Sightseeing buildings');
   t.is(parsed.stats.itemsOnPage, 2);

@@ -90,7 +90,7 @@ def build_schematic(plan_path: pathlib.Path, output_path: pathlib.Path) -> Dict[
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert a GrabCraft placement plan JSON into a WorldEdit .schem file.")
+    parser = argparse.ArgumentParser(description="Convert an imported model placement plan JSON into a WorldEdit .schem file.")
     parser.add_argument("--input", required=True, help="Path to the placement plan JSON")
     parser.add_argument("--output", required=True, help="Path to the output .schem file")
     args = parser.parse_args()

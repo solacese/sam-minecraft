@@ -6,7 +6,7 @@ import minecraftData from 'minecraft-data';
 import { Vec3 } from 'vec3';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
-import type { GrabCraftModelArtifact } from './grabcraft-import.js';
+import type { CatalogModelArtifact } from './catalog-import.js';
 
 export interface PlacementBlock {
   x: number;
@@ -111,7 +111,7 @@ function mapStairsMaterial(material: string): string | null {
   return null;
 }
 
-export function translateGrabCraftBlockName(name: string): string | null {
+export function translateCatalogBlockName(name: string): string | null {
   if (name.startsWith('minecraft:')) {
     const blockName = baseBlockName(name);
     if (MC_DATA.blocksByName[blockName]) {
@@ -182,7 +182,7 @@ function placementPriority(blockState: string): number {
 }
 
 export function buildPlacementPlan(
-  artifact: GrabCraftModelArtifact,
+  artifact: CatalogModelArtifact,
   originX: number,
   originY: number,
   originZ: number
@@ -203,7 +203,7 @@ export function buildPlacementPlan(
       continue;
     }
 
-    const blockState = translateGrabCraftBlockName(paletteName);
+    const blockState = translateCatalogBlockName(paletteName);
     if (!blockState) {
       skippedPalette.set(block.paletteKey, `Unsupported palette name: ${paletteName}`);
       continue;
@@ -401,12 +401,12 @@ export async function verifyPlacedBlocks(
 
 async function runCli(): Promise<void> {
   const argv = await yargs(hideBin(process.argv))
-    .scriptName('grabcraft-place')
+    .scriptName('catalog-place')
     .usage('$0 --input model.json --x 20 --y 65 --z 20 [options]')
     .option('input', {
       type: 'string',
       demandOption: true,
-      describe: 'Path to a GrabCraft model artifact JSON file'
+      describe: 'Path to an imported model artifact JSON file'
     })
     .option('x', {
       type: 'number',
@@ -452,10 +452,10 @@ async function runCli(): Promise<void> {
     .parse();
 
   const inputPath = path.resolve(argv.input);
-  const artifact = JSON.parse(await fs.readFile(inputPath, 'utf8')) as GrabCraftModelArtifact;
+  const artifact = JSON.parse(await fs.readFile(inputPath, 'utf8')) as CatalogModelArtifact;
 
-  if (artifact.kind !== 'grabcraft-model') {
-    throw new Error(`Expected a grabcraft-model artifact, got ${artifact.kind}.`);
+  if (artifact.kind !== 'catalog-model') {
+    throw new Error(`Expected a catalog-model artifact, got ${artifact.kind}.`);
   }
 
   const plan = buildPlacementPlan(artifact, Math.floor(argv.x), Math.floor(argv.y), Math.floor(argv.z));

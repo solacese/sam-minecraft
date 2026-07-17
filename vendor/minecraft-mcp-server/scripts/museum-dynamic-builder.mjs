@@ -20,7 +20,7 @@ const EXHIBITS = [
     title: 'Arc de Triomphe',
     centerX: -100,
     centerZ: 0,
-    file: 'vendor/minecraft-mcp-server/local_structures/arc_de_triomphe_grabcraft.ots_blocks'
+    file: 'vendor/minecraft-mcp-server/local_structures/arc_de_triomphe.ots_blocks'
   },
   {
     id: 'munich',
@@ -34,21 +34,21 @@ const EXHIBITS = [
     title: 'Eiffel Tower',
     centerX: 95,
     centerZ: 0,
-    file: 'vendor/minecraft-mcp-server/local_structures/eiffel_tower_paris_grabcraft.ots_blocks'
+    file: 'vendor/minecraft-mcp-server/local_structures/eiffel_tower_paris.ots_blocks'
   },
   {
     id: 'saint_basil',
     title: "Saint Basil's Cathedral",
     centerX: 175,
     centerZ: 0,
-    file: 'vendor/minecraft-mcp-server/local_structures/saint_basils_cathedral_moscow_grabcraft.ots_blocks'
+    file: 'vendor/minecraft-mcp-server/local_structures/saint_basils_cathedral_moscow.ots_blocks'
   },
   {
     id: 'chrysler',
     title: 'NY Chrysler Building',
     centerX: 255,
     centerZ: 0,
-    file: 'vendor/minecraft-mcp-server/local_structures/ny_chrysler_building_grabcraft.ots_blocks'
+    file: 'vendor/minecraft-mcp-server/local_structures/ny_chrysler_building.ots_blocks'
   }
 ];
 

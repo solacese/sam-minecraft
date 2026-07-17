@@ -49,10 +49,10 @@ LANDMARK_MARKERS = {
 OTS_EXHIBITS = {
     "munich": ("Munich Famous Building", "vendor/minecraft-mcp-server/local_structures/munich_famous_building.ots_blocks"),
     "sydney": ("Sydney Opera House", "vendor/minecraft-mcp-server/local_structures/sydney_opera_house_cadnav.ots_blocks"),
-    "arc": ("Arc de Triomphe", "vendor/minecraft-mcp-server/local_structures/arc_de_triomphe_grabcraft.ots_blocks"),
-    "eiffel": ("Eiffel Tower, Paris", "vendor/minecraft-mcp-server/local_structures/eiffel_tower_paris_grabcraft.ots_blocks"),
-    "saint_basil": ("Saint Basil's Cathedral, Moscow", "vendor/minecraft-mcp-server/local_structures/saint_basils_cathedral_moscow_grabcraft.ots_blocks"),
-    "chrysler": ("NY Chrysler Building", "vendor/minecraft-mcp-server/local_structures/ny_chrysler_building_grabcraft.ots_blocks"),
+    "arc": ("Arc de Triomphe", "vendor/minecraft-mcp-server/local_structures/arc_de_triomphe.ots_blocks"),
+    "eiffel": ("Eiffel Tower, Paris", "vendor/minecraft-mcp-server/local_structures/eiffel_tower_paris.ots_blocks"),
+    "saint_basil": ("Saint Basil's Cathedral, Moscow", "vendor/minecraft-mcp-server/local_structures/saint_basils_cathedral_moscow.ots_blocks"),
+    "chrysler": ("NY Chrysler Building", "vendor/minecraft-mcp-server/local_structures/ny_chrysler_building.ots_blocks"),
 }
 
 GUIDE_AGENTS = [

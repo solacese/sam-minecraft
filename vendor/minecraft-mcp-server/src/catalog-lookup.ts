@@ -1,7 +1,7 @@
-import { parseGrabCraftCatalogPage, type GrabCraftCatalogItem } from './grabcraft-import.js';
+import { parseCatalogCatalogPage, type CatalogCatalogItem } from './catalog-import.js';
 import type { LandmarkSpec } from './landmark-autonomy.js';
 
-const GRABCRAFT_SEARCH_BASE_URL = 'https://www.grabcraft.com/search/';
+const CATALOG_SEARCH_BASE_URL = 'https://models.example.invalid/search/';
 
 const BROAD_PROMPT_TOKENS = new Set([
   'famous',
@@ -115,7 +115,7 @@ const CULTURE_QUERY_PRESETS: Record<string, string[]> = {
   th: ['wat arun', 'thai temple', 'bangkok temple']
 };
 
-const GRABCRAFT_SPEC_PATTERNS: Array<{ specId: string; patterns: RegExp[] }> = [
+const CATALOG_SPEC_PATTERNS: Array<{ specId: string; patterns: RegExp[] }> = [
   { specId: 'arc_de_triomphe_fr', patterns: [/arc\s+de\s+triomphe/i] },
   { specId: 'eiffel_tower_fr', patterns: [/eiffel\s+tower/i, /eiffel-tower/i] },
   { specId: 'amsterdam_canal_house_nl', patterns: [/amsterdam/i, /canal\s+house/i] },
@@ -150,7 +150,7 @@ const GRABCRAFT_SPEC_PATTERNS: Array<{ specId: string; patterns: RegExp[] }> = [
   { specId: 'wat_arun_th', patterns: [/wat\s+arun/i, /temple.*dawn/i, /thai\s+temple/i] }
 ];
 
-export interface GrabCraftLookupCandidate {
+export interface CatalogLookupCandidate {
   title: string;
   url: string;
   blockCount?: number;
@@ -161,13 +161,13 @@ export interface GrabCraftLookupCandidate {
   mappedSpecId?: string;
 }
 
-export interface GrabCraftLookupResult {
+export interface CatalogLookupResult {
   queries: string[];
-  candidates: GrabCraftLookupCandidate[];
-  selected?: GrabCraftLookupCandidate;
+  candidates: CatalogLookupCandidate[];
+  selected?: CatalogLookupCandidate;
 }
 
-interface GrabCraftLookupOptions {
+interface CatalogLookupOptions {
   fetchText?: (url: string) => Promise<string>;
 }
 
@@ -250,7 +250,7 @@ function buildPromptQuery(prompt: string, cultureHint?: string): string | undefi
   return tokens.join(' ');
 }
 
-function recommendGrabCraftQueries(prompt: string, cultureHint?: string): string[] {
+function recommendCatalogQueries(prompt: string, cultureHint?: string): string[] {
   const inferredCulture = inferCultureAlias(prompt, cultureHint);
   const promptQuery = buildPromptQuery(prompt, cultureHint);
   const queries: string[] = [];
@@ -269,13 +269,13 @@ function recommendGrabCraftQueries(prompt: string, cultureHint?: string): string
 }
 
 function lookupUrlForQuery(query: string): string {
-  return `${GRABCRAFT_SEARCH_BASE_URL}${encodeURIComponent(query)}`;
+  return `${CATALOG_SEARCH_BASE_URL}${encodeURIComponent(query)}`;
 }
 
-function mapGrabCraftCandidateToSpec(item: GrabCraftCatalogItem, specs: LandmarkSpec[]): string | undefined {
+function mapCatalogCandidateToSpec(item: CatalogCatalogItem, specs: LandmarkSpec[]): string | undefined {
   const haystack = `${item.title} ${item.description ?? ''} ${item.url}`.toLowerCase();
   const specIds = new Set(specs.map((spec) => spec.id));
-  for (const candidate of GRABCRAFT_SPEC_PATTERNS) {
+  for (const candidate of CATALOG_SPEC_PATTERNS) {
     if (!specIds.has(candidate.specId)) {
       continue;
     }
@@ -286,8 +286,8 @@ function mapGrabCraftCandidateToSpec(item: GrabCraftCatalogItem, specs: Landmark
   return undefined;
 }
 
-function scoreGrabCraftCandidate(
-  item: GrabCraftCatalogItem,
+function scoreCatalogCandidate(
+  item: CatalogCatalogItem,
   query: string,
   promptTokens: Set<string>,
   cultureHint: string | undefined,
@@ -346,8 +346,8 @@ function scoreGrabCraftCandidate(
   };
 }
 
-function dedupeCandidates(candidates: GrabCraftLookupCandidate[]): GrabCraftLookupCandidate[] {
-  const byUrl = new Map<string, GrabCraftLookupCandidate>();
+function dedupeCandidates(candidates: CatalogLookupCandidate[]): CatalogLookupCandidate[] {
+  const byUrl = new Map<string, CatalogLookupCandidate>();
   for (const candidate of candidates) {
     const existing = byUrl.get(candidate.url);
     if (!existing || candidate.score > existing.score) {
@@ -365,7 +365,7 @@ function dedupeCandidates(candidates: GrabCraftLookupCandidate[]): GrabCraftLook
 async function defaultFetchText(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
-      'user-agent': 'sam-minecraft-grabcraft-lookup/1.0'
+      'user-agent': 'sam-minecraft-catalog-lookup/1.0'
     }
   });
 
@@ -376,10 +376,10 @@ async function defaultFetchText(url: string): Promise<string> {
   return await response.text();
 }
 
-export class GrabCraftLookupService {
+export class CatalogLookupService {
   private readonly fetchText: (url: string) => Promise<string>;
 
-  constructor(options: GrabCraftLookupOptions = {}) {
+  constructor(options: CatalogLookupOptions = {}) {
     this.fetchText = options.fetchText ?? defaultFetchText;
   }
 
@@ -388,20 +388,20 @@ export class GrabCraftLookupService {
     cultureHint?: string;
     specs: LandmarkSpec[];
     limit?: number;
-  }): Promise<GrabCraftLookupResult> {
+  }): Promise<CatalogLookupResult> {
     const prompt = String(input.prompt);
-    const queries = recommendGrabCraftQueries(prompt, input.cultureHint);
+    const queries = recommendCatalogQueries(prompt, input.cultureHint);
     const promptTokens = normalizedTokenSet(prompt);
-    const candidates: GrabCraftLookupCandidate[] = [];
+    const candidates: CatalogLookupCandidate[] = [];
 
     for (const query of queries) {
       const pageUrl = lookupUrlForQuery(query);
       const html = await this.fetchText(pageUrl);
-      const parsed = parseGrabCraftCatalogPage(html, pageUrl);
+      const parsed = parseCatalogCatalogPage(html, pageUrl);
 
       for (const item of parsed.items) {
-        const mappedSpecId = mapGrabCraftCandidateToSpec(item, input.specs);
-        const scored = scoreGrabCraftCandidate(item, query, promptTokens, input.cultureHint, mappedSpecId);
+        const mappedSpecId = mapCatalogCandidateToSpec(item, input.specs);
+        const scored = scoreCatalogCandidate(item, query, promptTokens, input.cultureHint, mappedSpecId);
         candidates.push({
           title: item.title,
           url: item.url,

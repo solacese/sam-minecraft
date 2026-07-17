@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { buildPlacementPlan } from '../src/grabcraft-place.ts';
+import { buildPlacementPlan } from '../src/catalog-place.ts';
 
 function usage() {
   return [
-    'Usage: tsx scripts/grabcraft-model-to-ots.mjs --input model.json --output model.ots_blocks',
+    'Usage: tsx scripts/catalog-model-to-ots.mjs --input model.json --output model.ots_blocks',
     '',
-    'Converts a GrabCraft model artifact JSON into the OTS_BLOCKS binary format.',
+    'Converts an imported model artifact JSON into the OTS_BLOCKS binary format.',
   ].join('\n');
 }
 
@@ -86,8 +86,8 @@ async function main() {
   const inputPath = path.resolve(args.input);
   const outputPath = path.resolve(args.output);
   const artifact = JSON.parse(await fs.readFile(inputPath, 'utf8'));
-  if (artifact.kind !== 'grabcraft-model') {
-    throw new Error(`Expected a grabcraft-model artifact, got '${artifact.kind ?? 'unknown'}'.`);
+  if (artifact.kind !== 'catalog-model') {
+    throw new Error(`Expected a catalog-model artifact, got '${artifact.kind ?? 'unknown'}'.`);
   }
 
   const plan = buildPlacementPlan(artifact, 0, 0, 0);

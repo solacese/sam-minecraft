@@ -21,10 +21,10 @@ The MCP server provides these 31 tools:
 | `get-progress-board` | View claims and progress events |
 | `plan-village-layout` | Generate compact multi-house grid plans |
 | `allocate-village-zones` | Atomically reserve all worker house zones for parallel building |
-| `lookup-grabcraft-landmarks` | Search `grabcraft.com` for landmark/building candidates and show template mapping |
+| `lookup-catalog-landmarks` | Search the approved model library for landmark/building candidates and show template mapping |
 | `discover-landmark-candidates` | Rank local landmark candidates for broad cultural prompts |
-| `select-landmark-spec` | Select the nearest local landmark template from prompt, preferring GrabCraft-matched templates when relevant |
-| `plan-landmark-mission` | Discover, optionally consult `grabcraft.com`, choose, auto-place, and compile a landmark mission in one call |
+| `select-landmark-spec` | Select the nearest local landmark template from prompt, preferring imported model matches when relevant |
+| `plan-landmark-mission` | Discover, optionally consult the approved model library, choose, auto-place, and compile a landmark mission in one call |
 | `compile-landmark-build-graph` | Build component DAG/tasks/zones/budgets for landmark run |
 | `allocate-build-graph-zones` | Atomically pre-claim all graph zones before execution |
 | `dispatch-next-task` | Dispatch next ready graph task for a worker |

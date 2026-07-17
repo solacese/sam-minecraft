@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
-  "kind": "grabcraft-model",
+  "kind": "catalog-model",
   "source": {
-    "pageUrl": "https://www.grabcraft.com/minecraft/arc-de-triomphe-paris/sightseeing-buildings",
+    "pageUrl": "https://models.example.invalid/minecraft/arc-de-triomphe-paris/sightseeing-buildings",
     "fetchedAt": "2026-03-24T15:14:08.622Z",
     "title": "Arc de Triomphe, Paris",
     "blockCount": 11957,
@@ -11,9 +11,9 @@
       "y": 51,
       "z": 25
     },
-    "renderObjectScriptUrl": "https://www.grabcraft.com/js/RenderObject/myRenderObject_1788.js",
-    "layerMapScriptUrl": "https://www.grabcraft.com/js/LayerMap/LayerMap_1555.js",
-    "blueprintBaseUrl": "https://bprints.grabcraft.com/1788/Y/combined/",
+    "renderObjectScriptUrl": "https://models.example.invalid/js/RenderObject/myRenderObject_1788.js",
+    "layerMapScriptUrl": "https://models.example.invalid/js/LayerMap/LayerMap_1555.js",
+    "blueprintBaseUrl": "https://blueprints.example.invalid/1788/Y/combined/",
     "blueprintLayerCount": 51
   },
   "stats": {
@@ -598,7 +598,7 @@
         "85:44_0.png:Stone Slab",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/1.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/1.png"
     },
     {
       "y": 2,
@@ -606,7 +606,7 @@
       "paletteKeys": [
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/2.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/2.png"
     },
     {
       "y": 3,
@@ -618,7 +618,7 @@
         "610:128_2.png:Sandstone Stairs (South, Normal)",
         "611:128_3.png:Sandstone Stairs (North, Normal)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/3.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/3.png"
     },
     {
       "y": 4,
@@ -629,7 +629,7 @@
         "449:50_4.png:Torch (Facing North)",
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/4.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/4.png"
     },
     {
       "y": 5,
@@ -639,7 +639,7 @@
         "610:128_2.png:Sandstone Stairs (South, Normal)",
         "611:128_3.png:Sandstone Stairs (North, Normal)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/5.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/5.png"
     },
     {
       "y": 6,
@@ -649,7 +649,7 @@
         "610:128_2.png:Sandstone Stairs (South, Normal)",
         "611:128_3.png:Sandstone Stairs (North, Normal)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/6.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/6.png"
     },
     {
       "y": 7,
@@ -666,7 +666,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/7.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/7.png"
     },
     {
       "y": 8,
@@ -682,7 +682,7 @@
         "80:43_3.png:Double Cobblestone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/8.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/8.png"
     },
     {
       "y": 9,
@@ -696,7 +696,7 @@
         "80:43_3.png:Double Cobblestone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/9.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/9.png"
     },
     {
       "y": 10,
@@ -712,7 +712,7 @@
         "88:44_3.png:Cobblestone Slab",
         "90:44_5.png:Stone Brick Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/10.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/10.png"
     },
     {
       "y": 11,
@@ -729,7 +729,7 @@
         "88:44_3.png:Cobblestone Slab",
         "90:44_5.png:Stone Brick Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/11.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/11.png"
     },
     {
       "y": 12,
@@ -744,7 +744,7 @@
         "88:44_3.png:Cobblestone Slab",
         "90:44_5.png:Stone Brick Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/12.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/12.png"
     },
     {
       "y": 13,
@@ -758,7 +758,7 @@
         "88:44_3.png:Cobblestone Slab",
         "90:44_5.png:Stone Brick Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/13.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/13.png"
     },
     {
       "y": 14,
@@ -770,7 +770,7 @@
         "53:24_0.png:Sandstone",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/14.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/14.png"
     },
     {
       "y": 15,
@@ -786,7 +786,7 @@
         "615:128_7.png:Sandstone Stairs (North, Upside-down)",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/15.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/15.png"
     },
     {
       "y": 16,
@@ -803,7 +803,7 @@
         "85:44_0.png:Stone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/16.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/16.png"
     },
     {
       "y": 17,
@@ -822,7 +822,7 @@
         "615:128_7.png:Sandstone Stairs (North, Upside-down)",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/17.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/17.png"
     },
     {
       "y": 18,
@@ -837,7 +837,7 @@
         "85:44_0.png:Stone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/18.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/18.png"
     },
     {
       "y": 19,
@@ -853,7 +853,7 @@
         "615:128_7.png:Sandstone Stairs (North, Upside-down)",
         "85:44_0.png:Stone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/19.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/19.png"
     },
     {
       "y": 20,
@@ -869,7 +869,7 @@
         "85:44_0.png:Stone Slab",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/20.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/20.png"
     },
     {
       "y": 21,
@@ -879,7 +879,7 @@
         "4:1_0.png:Stone",
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/21.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/21.png"
     },
     {
       "y": 22,
@@ -892,7 +892,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/22.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/22.png"
     },
     {
       "y": 23,
@@ -905,7 +905,7 @@
         "85:44_0.png:Stone Slab",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/23.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/23.png"
     },
     {
       "y": 24,
@@ -922,7 +922,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/24.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/24.png"
     },
     {
       "y": 25,
@@ -942,7 +942,7 @@
         "80:43_3.png:Double Cobblestone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/25.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/25.png"
     },
     {
       "y": 26,
@@ -961,7 +961,7 @@
         "80:43_3.png:Double Cobblestone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/26.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/26.png"
     },
     {
       "y": 27,
@@ -982,7 +982,7 @@
         "88:44_3.png:Cobblestone Slab",
         "90:44_5.png:Stone Brick Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/27.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/27.png"
     },
     {
       "y": 28,
@@ -999,7 +999,7 @@
         "85:44_0.png:Stone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/28.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/28.png"
     },
     {
       "y": 29,
@@ -1018,7 +1018,7 @@
         "85:44_0.png:Stone Slab",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/29.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/29.png"
     },
     {
       "y": 30,
@@ -1034,7 +1034,7 @@
         "615:128_7.png:Sandstone Stairs (North, Upside-down)",
         "88:44_3.png:Cobblestone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/30.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/30.png"
     },
     {
       "y": 31,
@@ -1046,7 +1046,7 @@
         "612:128_4.png:Sandstone Stairs (East, Upside-down)",
         "613:128_5.png:Sandstone Stairs (West, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/31.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/31.png"
     },
     {
       "y": 32,
@@ -1058,7 +1058,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/32.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/32.png"
     },
     {
       "y": 33,
@@ -1068,7 +1068,7 @@
         "4:1_0.png:Stone",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/33.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/33.png"
     },
     {
       "y": 34,
@@ -1078,7 +1078,7 @@
         "49:20_0.png:Glass",
         "4:1_0.png:Stone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/34.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/34.png"
     },
     {
       "y": 35,
@@ -1088,7 +1088,7 @@
         "49:20_0.png:Glass",
         "4:1_0.png:Stone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/35.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/35.png"
     },
     {
       "y": 36,
@@ -1101,7 +1101,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/36.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/36.png"
     },
     {
       "y": 37,
@@ -1113,7 +1113,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/37.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/37.png"
     },
     {
       "y": 38,
@@ -1121,7 +1121,7 @@
       "paletteKeys": [
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/38.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/38.png"
     },
     {
       "y": 39,
@@ -1130,7 +1130,7 @@
         "4:1_0.png:Stone",
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/39.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/39.png"
     },
     {
       "y": 40,
@@ -1142,7 +1142,7 @@
         "610:128_2.png:Sandstone Stairs (South, Normal)",
         "611:128_3.png:Sandstone Stairs (North, Normal)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/40.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/40.png"
     },
     {
       "y": 41,
@@ -1150,7 +1150,7 @@
       "paletteKeys": [
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/41.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/41.png"
     },
     {
       "y": 42,
@@ -1163,7 +1163,7 @@
         "611:128_3.png:Sandstone Stairs (North, Normal)",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/42.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/42.png"
     },
     {
       "y": 43,
@@ -1180,7 +1180,7 @@
         "610:128_2.png:Sandstone Stairs (South, Normal)",
         "611:128_3.png:Sandstone Stairs (North, Normal)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/43.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/43.png"
     },
     {
       "y": 44,
@@ -1191,7 +1191,7 @@
         "4:1_0.png:Stone",
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/44.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/44.png"
     },
     {
       "y": 45,
@@ -1207,7 +1207,7 @@
         "758:77_1.png:Stone Button (Facing East, Inactive)",
         "759:77_2.png:Stone Button (Facing West, Inactive)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/45.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/45.png"
     },
     {
       "y": 46,
@@ -1218,7 +1218,7 @@
         "4:1_0.png:Stone",
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/46.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/46.png"
     },
     {
       "y": 47,
@@ -1232,7 +1232,7 @@
         "614:128_6.png:Sandstone Stairs (South, Upside-down)",
         "615:128_7.png:Sandstone Stairs (North, Upside-down)"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/47.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/47.png"
     },
     {
       "y": 48,
@@ -1240,7 +1240,7 @@
       "paletteKeys": [
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/48.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/48.png"
     },
     {
       "y": 49,
@@ -1253,7 +1253,7 @@
         "611:128_3.png:Sandstone Stairs (North, Normal)",
         "85:44_0.png:Stone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/49.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/49.png"
     },
     {
       "y": 50,
@@ -1266,7 +1266,7 @@
         "611:128_3.png:Sandstone Stairs (North, Normal)",
         "86:44_1.png:Sandstone Slab"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/50.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/50.png"
     },
     {
       "y": 51,
@@ -1274,7 +1274,7 @@
       "paletteKeys": [
         "53:24_0.png:Sandstone"
       ],
-      "blueprintImageUrl": "https://bprints.grabcraft.com/1788/Y/combined/51.png"
+      "blueprintImageUrl": "https://blueprints.example.invalid/1788/Y/combined/51.png"
     }
   ],
   "blocks": [

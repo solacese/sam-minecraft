@@ -1,41 +1,41 @@
 import test from 'ava';
-import { buildPlacementPlan, translateGrabCraftBlockName } from '../src/grabcraft-place.js';
-import type { GrabCraftModelArtifact } from '../src/grabcraft-import.js';
+import { buildPlacementPlan, translateCatalogBlockName } from '../src/catalog-place.js';
+import type { CatalogModelArtifact } from '../src/catalog-import.js';
 
-test('translateGrabCraftBlockName maps legacy stairs and slab variants', (t) => {
+test('translateCatalogBlockName maps legacy stairs and slab variants', (t) => {
   t.is(
-    translateGrabCraftBlockName('Sandstone Stairs (North, Normal)'),
+    translateCatalogBlockName('Sandstone Stairs (North, Normal)'),
     'minecraft:sandstone_stairs[facing=north,half=bottom,shape=straight,waterlogged=false]'
   );
   t.is(
-    translateGrabCraftBlockName('Stone Slab (Upper)'),
+    translateCatalogBlockName('Stone Slab (Upper)'),
     'minecraft:smooth_stone_slab[type=top,waterlogged=false]'
   );
   t.is(
-    translateGrabCraftBlockName('Torch (Facing East)'),
+    translateCatalogBlockName('Torch (Facing East)'),
     'minecraft:wall_torch[facing=east]'
   );
   t.is(
-    translateGrabCraftBlockName('Stone Button (Facing South, Inactive)'),
+    translateCatalogBlockName('Stone Button (Facing South, Inactive)'),
     'minecraft:stone_button[face=wall,facing=south,powered=false]'
   );
 });
 
-test('translateGrabCraftBlockName preserves exact minecraft block states', (t) => {
+test('translateCatalogBlockName preserves exact minecraft block states', (t) => {
   t.is(
-    translateGrabCraftBlockName('minecraft:quartz_stairs[facing=west,half=top,shape=straight,waterlogged=false]'),
+    translateCatalogBlockName('minecraft:quartz_stairs[facing=west,half=top,shape=straight,waterlogged=false]'),
     'minecraft:quartz_stairs[facing=west,half=top,shape=straight,waterlogged=false]'
   );
   t.is(
-    translateGrabCraftBlockName('minecraft:white_concrete'),
+    translateCatalogBlockName('minecraft:white_concrete'),
     'minecraft:white_concrete'
   );
 });
 
 test('buildPlacementPlan skips unsupported palette entries and offsets coordinates', (t) => {
-  const artifact: GrabCraftModelArtifact = {
+  const artifact: CatalogModelArtifact = {
     schemaVersion: '1.0',
-    kind: 'grabcraft-model',
+    kind: 'catalog-model',
     source: {
       pageUrl: 'https://example.com',
       fetchedAt: '2026-03-24T00:00:00.000Z',

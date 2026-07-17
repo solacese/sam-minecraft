@@ -236,7 +236,7 @@ const BROAD_LANDMARK_PROMPT_TOKENS = new Set([
 ]);
 
 export interface BuildTaskToolPlan {
-  primaryTool: 'fill-region' | 'flatten-area' | 'place-block' | 'plant-garden' | 'build-decorated-house' | 'place-grabcraft-shard';
+  primaryTool: 'fill-region' | 'flatten-area' | 'place-block' | 'plant-garden' | 'build-decorated-house' | 'place-catalog-shard';
   params: Record<string, unknown>;
   note: string;
 }

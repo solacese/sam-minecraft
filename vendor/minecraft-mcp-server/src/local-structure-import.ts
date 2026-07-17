@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import type { GrabCraftModelArtifact } from './grabcraft-import.js';
+import type { CatalogModelArtifact } from './catalog-import.js';
 
 const require = createRequire(import.meta.url);
 const { Vec3 } = require('vec3');
@@ -466,7 +466,7 @@ export async function importLocalStructureWorldAsModel(input: {
   filePath: string;
   title?: string;
   sourceVersion?: string;
-}): Promise<GrabCraftModelArtifact> {
+}): Promise<CatalogModelArtifact> {
   const world = await resolveWorldRoot(input.filePath);
   const regionDir = path.join(world.worldRoot, 'region');
   const mcVersion = input.sourceVersion?.trim() || DEFAULT_WORLD_VERSION;
@@ -557,7 +557,7 @@ export async function importLocalStructureWorldAsModel(input: {
     const paletteCounts = new Map<string, number>();
     const layerCounts = new Map<number, number>();
     const layerPalettes = new Map<number, Set<string>>();
-    const blocks: GrabCraftModelArtifact['blocks'] = [];
+    const blocks: CatalogModelArtifact['blocks'] = [];
 
     for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX += 1) {
       for (let chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ += 1) {
@@ -605,7 +605,7 @@ export async function importLocalStructureWorldAsModel(input: {
       throw new Error(`No non-terrain structure blocks were exported from ${input.filePath}.`);
     }
 
-    const palette: GrabCraftModelArtifact['palette'] = Array.from(paletteCounts.entries())
+    const palette: CatalogModelArtifact['palette'] = Array.from(paletteCounts.entries())
       .sort((left, right) => right[1] - left[1])
       .map(([blockState, count]) => ({
         paletteKey: blockState,
@@ -616,7 +616,7 @@ export async function importLocalStructureWorldAsModel(input: {
         count
       }));
 
-    const layers: GrabCraftModelArtifact['layers'] = Array.from(layerCounts.entries())
+    const layers: CatalogModelArtifact['layers'] = Array.from(layerCounts.entries())
       .sort((left, right) => left[0] - right[0])
       .map(([y, blockCount]) => ({
         y,
@@ -629,7 +629,7 @@ export async function importLocalStructureWorldAsModel(input: {
 
     return {
       schemaVersion: '1.0',
-      kind: 'grabcraft-model',
+      kind: 'catalog-model',
       source: {
         pageUrl: `file://${sourcePath}`,
         fetchedAt: new Date().toISOString(),

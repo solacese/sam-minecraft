@@ -3,15 +3,15 @@ import path from 'node:path';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
-const GRABCRAFT_ORIGIN = 'https://www.grabcraft.com';
+const CATALOG_ORIGIN = 'https://models.example.invalid';
 
-interface GrabCraftDimensions {
+interface CatalogDimensions {
   x: number;
   y: number;
   z: number;
 }
 
-interface GrabCraftRenderBlock {
+interface CatalogRenderBlock {
   x: number;
   y: number | string;
   z: number | string;
@@ -25,7 +25,7 @@ interface GrabCraftRenderBlock {
   texture?: string;
 }
 
-interface GrabCraftPaletteEntry {
+interface CatalogPaletteEntry {
   paletteKey: string;
   materialId: string;
   name: string;
@@ -37,21 +37,21 @@ interface GrabCraftPaletteEntry {
   count: number;
 }
 
-interface GrabCraftLayerSummary {
+interface CatalogLayerSummary {
   y: number;
   blockCount: number;
   paletteKeys: string[];
   blueprintImageUrl?: string;
 }
 
-interface GrabCraftImportedBlock {
+interface CatalogImportedBlock {
   x: number;
   y: number;
   z: number;
   paletteKey: string;
 }
 
-interface GrabCraftBounds {
+interface CatalogBounds {
   minX: number;
   maxX: number;
   minY: number;
@@ -60,15 +60,15 @@ interface GrabCraftBounds {
   maxZ: number;
 }
 
-export interface GrabCraftModelArtifact {
+export interface CatalogModelArtifact {
   schemaVersion: '1.0';
-  kind: 'grabcraft-model';
+  kind: 'catalog-model';
   source: {
     pageUrl: string;
     fetchedAt: string;
     title: string;
     blockCount?: number;
-    dimensions?: GrabCraftDimensions;
+    dimensions?: CatalogDimensions;
     renderObjectScriptUrl?: string;
     layerMapScriptUrl?: string;
     blueprintBaseUrl?: string;
@@ -78,14 +78,14 @@ export interface GrabCraftModelArtifact {
     importedBlocks: number;
     paletteSize: number;
     layerCount: number;
-    bounds: GrabCraftBounds | null;
+    bounds: CatalogBounds | null;
   };
-  palette: GrabCraftPaletteEntry[];
-  layers: GrabCraftLayerSummary[];
-  blocks: GrabCraftImportedBlock[];
+  palette: CatalogPaletteEntry[];
+  layers: CatalogLayerSummary[];
+  blocks: CatalogImportedBlock[];
 }
 
-export interface GrabCraftCatalogItem {
+export interface CatalogCatalogItem {
   title: string;
   url: string;
   imageUrl?: string;
@@ -95,9 +95,9 @@ export interface GrabCraftCatalogItem {
   blueprintsUrl?: string;
 }
 
-export interface GrabCraftCatalogArtifact {
+export interface CatalogCatalogArtifact {
   schemaVersion: '1.0';
-  kind: 'grabcraft-catalog';
+  kind: 'catalog-catalog';
   source: {
     pageUrl: string;
     fetchedAt: string;
@@ -106,13 +106,13 @@ export interface GrabCraftCatalogArtifact {
   stats: {
     itemsOnPage: number;
   };
-  items: GrabCraftCatalogItem[];
+  items: CatalogCatalogItem[];
 }
 
-interface GrabCraftObjectPageMeta {
+interface CatalogObjectPageMeta {
   title: string;
   blockCount?: number;
-  dimensions?: GrabCraftDimensions;
+  dimensions?: CatalogDimensions;
   renderObjectScriptUrl?: string;
   layerMapScriptUrl?: string;
   blueprintBaseUrl?: string;
@@ -135,7 +135,7 @@ function stripTags(value: string): string {
   return decodeHtmlEntities(value.replace(/<[^>]+>/g, ' '));
 }
 
-function absoluteGrabCraftUrl(urlOrPath: string, baseUrl = GRABCRAFT_ORIGIN): string {
+function absoluteCatalogUrl(urlOrPath: string, baseUrl = CATALOG_ORIGIN): string {
   return new URL(urlOrPath, baseUrl).toString();
 }
 
@@ -178,7 +178,7 @@ function extractJsonAssignment<T>(scriptText: string, variableName: string): T {
 async function fetchText(url: string): Promise<string> {
   const response = await fetch(url, {
     headers: {
-      'user-agent': 'sam-minecraft-grabcraft-importer/1.0'
+      'user-agent': 'sam-minecraft-catalog-importer/1.0'
     }
   });
 
@@ -189,13 +189,13 @@ async function fetchText(url: string): Promise<string> {
   return await response.text();
 }
 
-export function parseGrabCraftObjectPage(html: string, pageUrl: string): GrabCraftObjectPageMeta {
+export function parseCatalogObjectPage(html: string, pageUrl: string): CatalogObjectPageMeta {
   const title =
     stripTags(
       extractMatch(/<h1[^>]*id="content-title"[^>]*>([\s\S]*?)<\/h1>/i, html) ??
         extractMatch(/<title>([\s\S]*?)<\/title>/i, html) ??
-        'Untitled GrabCraft Object'
-    ) || 'Untitled GrabCraft Object';
+        'Untitled Model Object'
+    ) || 'Untitled Model Object';
 
   const blockCount = parseInteger(extractMatch(/class="value block_count">([\d,]+)<\/td>/i, html));
   const dimX = parseInteger(extractMatch(/var\s+dimX\s*=\s*(\d+)\s*;/i, html));
@@ -222,41 +222,41 @@ export function parseGrabCraftObjectPage(html: string, pageUrl: string): GrabCra
     title,
     blockCount,
     dimensions,
-    renderObjectScriptUrl: renderObjectPath ? absoluteGrabCraftUrl(renderObjectPath, pageUrl) : undefined,
-    layerMapScriptUrl: layerMapPath ? absoluteGrabCraftUrl(layerMapPath, pageUrl) : undefined,
+    renderObjectScriptUrl: renderObjectPath ? absoluteCatalogUrl(renderObjectPath, pageUrl) : undefined,
+    layerMapScriptUrl: layerMapPath ? absoluteCatalogUrl(layerMapPath, pageUrl) : undefined,
     blueprintBaseUrl,
     blueprintLayerCount
   };
 }
 
-export function parseGrabCraftCatalogPage(html: string, pageUrl: string): GrabCraftCatalogArtifact {
+export function parseCatalogCatalogPage(html: string, pageUrl: string): CatalogCatalogArtifact {
   const title =
     stripTags(
       extractMatch(/<h1[^>]*id="content-title"[^>]*>([\s\S]*?)<\/h1>/i, html) ??
         extractMatch(/<title>([\s\S]*?)<\/title>/i, html) ??
-        'Untitled GrabCraft Catalog'
-    ) || 'Untitled GrabCraft Catalog';
+        'Untitled Model Catalog'
+    ) || 'Untitled Model Catalog';
 
   const productPattern =
     /<div class="product-box[\s\S]*?<a href="([^"]+)" class="image" title="([^"]+)">[\s\S]*?<img src="([^"]+)"[^>]*alt="([^"]*)"[\s\S]*?<div class="product-description">([\s\S]*?)<\/div>[\s\S]*?<div class="regular-price"><b><i class="fa fa-cubes"><\/i>&nbsp;Block count:&nbsp;([\d,]+)<\/b><\/div>[\s\S]*?<a href="([^"]+)" class="button more-info details">Details<\/a>[\s\S]*?<a href="([^"]+)" class="button more-info blueprints">Blueprints<\/a>/gi;
 
-  const items: GrabCraftCatalogItem[] = [];
+  const items: CatalogCatalogItem[] = [];
   let match: RegExpExecArray | null;
   while ((match = productPattern.exec(html)) !== null) {
     items.push({
       title: decodeHtmlEntities(match[2] || match[4]),
-      url: absoluteGrabCraftUrl(match[1], pageUrl),
-      imageUrl: absoluteGrabCraftUrl(match[3], pageUrl),
+      url: absoluteCatalogUrl(match[1], pageUrl),
+      imageUrl: absoluteCatalogUrl(match[3], pageUrl),
       blockCount: parseInteger(match[6]),
       description: stripTags(match[5]),
-      detailsUrl: absoluteGrabCraftUrl(match[7], pageUrl),
-      blueprintsUrl: absoluteGrabCraftUrl(match[8], pageUrl)
+      detailsUrl: absoluteCatalogUrl(match[7], pageUrl),
+      blueprintsUrl: absoluteCatalogUrl(match[8], pageUrl)
     });
   }
 
   return {
     schemaVersion: '1.0',
-    kind: 'grabcraft-catalog',
+    kind: 'catalog-catalog',
     source: {
       pageUrl,
       fetchedAt: new Date().toISOString(),
@@ -269,17 +269,17 @@ export function parseGrabCraftCatalogPage(html: string, pageUrl: string): GrabCr
   };
 }
 
-export function flattenRenderObject(renderObject: Record<string, Record<string, Record<string, GrabCraftRenderBlock>>>): {
-  blocks: GrabCraftImportedBlock[];
-  layers: GrabCraftLayerSummary[];
-  palette: GrabCraftPaletteEntry[];
-  bounds: GrabCraftBounds | null;
+export function flattenRenderObject(renderObject: Record<string, Record<string, Record<string, CatalogRenderBlock>>>): {
+  blocks: CatalogImportedBlock[];
+  layers: CatalogLayerSummary[];
+  palette: CatalogPaletteEntry[];
+  bounds: CatalogBounds | null;
 } {
-  const blocks: GrabCraftImportedBlock[] = [];
-  const paletteMap = new Map<string, GrabCraftPaletteEntry>();
+  const blocks: CatalogImportedBlock[] = [];
+  const paletteMap = new Map<string, CatalogPaletteEntry>();
   const layerMap = new Map<number, { blockCount: number; paletteKeys: Set<string> }>();
 
-  let bounds: GrabCraftBounds | null = null;
+  let bounds: CatalogBounds | null = null;
 
   const sortedY = Object.keys(renderObject)
     .map((value) => Number.parseInt(value, 10))
@@ -372,16 +372,16 @@ export function flattenRenderObject(renderObject: Record<string, Record<string, 
   };
 }
 
-export async function importGrabCraftModel(pageUrl: string): Promise<GrabCraftModelArtifact> {
+export async function importCatalogModel(pageUrl: string): Promise<CatalogModelArtifact> {
   const html = await fetchText(pageUrl);
-  const meta = parseGrabCraftObjectPage(html, pageUrl);
+  const meta = parseCatalogObjectPage(html, pageUrl);
 
   if (!meta.renderObjectScriptUrl) {
     throw new Error(`No render object script found on ${pageUrl}.`);
   }
 
   const renderScriptText = await fetchText(meta.renderObjectScriptUrl);
-  const renderObject = extractJsonAssignment<Record<string, Record<string, Record<string, GrabCraftRenderBlock>>>>(
+  const renderObject = extractJsonAssignment<Record<string, Record<string, Record<string, CatalogRenderBlock>>>>(
     renderScriptText,
     'myRenderObject'
   );
@@ -404,7 +404,7 @@ export async function importGrabCraftModel(pageUrl: string): Promise<GrabCraftMo
 
   return {
     schemaVersion: '1.0',
-    kind: 'grabcraft-model',
+    kind: 'catalog-model',
     source: {
       pageUrl,
       fetchedAt: new Date().toISOString(),
@@ -428,15 +428,15 @@ export async function importGrabCraftModel(pageUrl: string): Promise<GrabCraftMo
   };
 }
 
-export async function importGrabCraftCatalog(pageUrl: string): Promise<GrabCraftCatalogArtifact> {
+export async function importCatalogCatalog(pageUrl: string): Promise<CatalogCatalogArtifact> {
   const html = await fetchText(pageUrl);
-  return parseGrabCraftCatalogPage(html, pageUrl);
+  return parseCatalogCatalogPage(html, pageUrl);
 }
 
-async function writeArtifact(outputDir: string, pageUrl: string, artifact: GrabCraftModelArtifact | GrabCraftCatalogArtifact): Promise<string> {
+async function writeArtifact(outputDir: string, pageUrl: string, artifact: CatalogModelArtifact | CatalogCatalogArtifact): Promise<string> {
   await fs.mkdir(outputDir, { recursive: true });
   const defaultName =
-    artifact.kind === 'grabcraft-model'
+    artifact.kind === 'catalog-model'
       ? `${slugify(artifact.source.title)}.model.json`
       : `${slugify(artifact.source.title)}.catalog.json`;
   const filePath = path.join(outputDir, defaultName);
@@ -446,12 +446,12 @@ async function writeArtifact(outputDir: string, pageUrl: string, artifact: GrabC
 
 async function runCli(): Promise<void> {
   const argv = await yargs(hideBin(process.argv))
-    .scriptName('grabcraft-import')
-    .usage('$0 --url <grabcraft-url> [--type auto|model|catalog] [--output-dir path]')
+    .scriptName('catalog-import')
+    .usage('$0 --url <catalog-url> [--type auto|model|catalog] [--output-dir path]')
     .option('url', {
       type: 'string',
       demandOption: true,
-      describe: 'GrabCraft object or category URL'
+      describe: 'Model object or category URL'
     })
     .option('type', {
       type: 'string',
@@ -461,7 +461,7 @@ async function runCli(): Promise<void> {
     })
     .option('output-dir', {
       type: 'string',
-      default: path.resolve(process.cwd(), 'grabcraft_samples'),
+      default: path.resolve(process.cwd(), 'catalog_samples'),
       describe: 'Directory where imported JSON artifacts will be written'
     })
     .strict()
@@ -479,12 +479,12 @@ async function runCli(): Promise<void> {
 
   const artifact =
     inferredType === 'model'
-      ? await importGrabCraftModel(pageUrl)
-      : parseGrabCraftCatalogPage(html, pageUrl);
+      ? await importCatalogModel(pageUrl)
+      : parseCatalogCatalogPage(html, pageUrl);
 
   const filePath = await writeArtifact(path.resolve(argv['output-dir']), pageUrl, artifact);
   const summary =
-    artifact.kind === 'grabcraft-model'
+    artifact.kind === 'catalog-model'
       ? `Imported ${artifact.source.title}: ${artifact.stats.importedBlocks} blocks, ${artifact.stats.paletteSize} palette entries.`
       : `Imported ${artifact.source.title}: ${artifact.stats.itemsOnPage} catalog items.`;
 

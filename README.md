@@ -25,7 +25,7 @@ Built on [Solace Agent Mesh (SAM)](https://github.com/SolaceLabs/solace-agent-me
 # 1. Clone and enter the repo
 git clone <this-repo-url> && cd sam-minecraft
 
-# 2. Set your API key
+# 2. Set your API key, or put it in ignored .env.local
 export LITELLM_API_KEY="sk-..."
 
 # 3. Launch everything
@@ -155,7 +155,7 @@ Every landmark below is a ready-to-go template. Just name it in a prompt.
 | **MinecraftAgent** (Handy Hank) | Sonnet | Primary structure builder |
 | **BuildBeaAgent** (Build Bea) | Sonnet | Framing, walls, and roofing |
 | **SupplySidAgent** (Supply Sid) | Sonnet | Finishing details, arches, windows |
-| **MonumentMarcAgent** (Monument Marc) | Sonnet | Monument masonry and GrabCraft shards |
+| **MonumentMarcAgent** (Monument Marc) | Sonnet | Monument masonry and model shards |
 | **DesignDoraAgent** (Design Dora) | Haiku | Site planning and terrain prep |
 | **ForestFinnAgent** (Forest Finn) | Haiku | Landscaping, gardens, and cleanup |
 
@@ -194,8 +194,9 @@ Each landmark template defines 8-14 components with dependency chains, material 
 |----------|---------|-------------|
 | `LITELLM_API_KEY` | _(required)_ | Your LiteLLM API key |
 | `LITELLM_API_BASE` | `https://lite-llm.mymaas.net` | LiteLLM proxy URL |
-| `LITELLM_MODEL` | `openai/bedrock-claude-4-5-haiku-tools` | Model identifier |
-| `START_WORLD_RESET_MODE` | `auto` | `auto` = new seed, `keep` = preserve world, `same` = same seed, or a number |
+| `LITELLM_MODEL_SONNET` | `openai/bedrock-claude-4-5-sonnet-tools` | Sonnet model identifier for SAM's LiteLLM client |
+| `LITELLM_MODEL_HAIKU` | `openai/bedrock-claude-4-5-haiku-tools` | Haiku model identifier for SAM's LiteLLM client |
+| `START_WORLD_RESET_MODE` | `auto` | `auto` = new seed, `keep`/`same` = reset using current seed, `preserve` = keep current world, or a number |
 
 ---
 
@@ -226,7 +227,7 @@ sam-minecraft/
 │   ├── services/platform.yaml        # SAM platform config
 │   └── agents/                       # 7 agent YAML configs
 ├── vendor/minecraft-mcp-server/      # MCP server (TypeScript)
-│   ├── src/                          # 33 tools, GrabCraft integration, autonomy engine
+│   ├── src/                          # 33 tools, imported model support, autonomy engine
 │   ├── landmark_specs/               # 32 landmark templates (20+ countries)
 │   └── tests/                        # Test suite
 ├── tools/                            # Supplementary Python utilities

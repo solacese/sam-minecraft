@@ -19,8 +19,8 @@
     "build": "tsc -p tsconfig.build.json",
     "prepare": "npm run build",
     "start": "node dist/main.js",
-    "grabcraft:import": "tsx src/grabcraft-import.ts",
-    "grabcraft:place": "tsx src/grabcraft-place.ts",
+    "catalog:import": "tsx src/catalog-import.ts",
+    "catalog:place": "tsx src/catalog-place.ts",
     "test": "ava",
     "lint": "eslint \"{src,tests}/**/*.ts\"",
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix"

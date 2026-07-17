@@ -23,6 +23,18 @@ log() {
   printf '[start-demo] %s\n' "$1"
 }
 
+load_local_env_files() {
+  for env_file in "$ROOT_DIR/.env" "$ROOT_DIR/.env.local"; do
+    if [ -f "$env_file" ]; then
+      set -a
+      # shellcheck disable=SC1090
+      . "$env_file"
+      set +a
+      log "Loaded local environment from $(basename "$env_file")"
+    fi
+  done
+}
+
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
     printf 'Missing required command: %s\n' "$1" >&2
@@ -158,8 +170,8 @@ current_pid = int(sys.argv[1])
 patterns = [
     "./.venv/bin/sam run configs/",
     "vendor/minecraft-mcp-server/dist/main.js --host localhost --port 25565 --username ",
-    "npm run grabcraft:place --input ",
-    "tsx src/grabcraft-place.ts --input ",
+    "npm run catalog:place --input ",
+    "tsx src/catalog-place.ts --input ",
 ]
 
 try:
@@ -822,6 +834,8 @@ apply_world_stability_profile() {
     "time set day" \
     "gamerule doDaylightCycle false" \
     "gamerule doWeatherCycle false" \
+    "gamerule doMobSpawning false" \
+    "kill @e[type=!player]" \
     "weather clear 1000000"
   do
     if ! run_rcon_cmd "$cmd"; then
@@ -883,6 +897,7 @@ node -e 'const [maj,min]=process.versions.node.split(".").map(Number); if(maj<20
 }
 
 # Check LiteLLM configuration
+load_local_env_files
 check_litellm_config
 ensure_namespace_config
 ensure_sam_dev_mode
@@ -904,10 +919,12 @@ log "Installing Python dependencies..."
 ./.venv/bin/pip install -r requirements.txt >/dev/null
 patch_sam_peer_tool_prefix
 
-log "Installing and building local Minecraft MCP server..."
+log "Preparing local Minecraft MCP server..."
 (
   cd vendor/minecraft-mcp-server
-  npm ci >/dev/null 2>&1 || true
+  if [ ! -d node_modules ]; then
+    npm ci >/dev/null 2>&1 || true
+  fi
   npm run build >/dev/null 2>&1 || true
 )
 
