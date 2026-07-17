@@ -327,14 +327,14 @@ function formatCount(value) {
 }
 
 function streamMessage(exhibit, modeLabel, placed, total) {
-  const sign = modeLabel === 'build' || modeLabel === 'restore' ? '+' : '-';
   const action = modeLabel === 'build'
     ? 'building'
     : modeLabel === 'restore'
       ? 'restoring'
       : 'dissolving';
-  const color = sign === '+' ? 'green' : 'red';
-  return tellraw(`[SAM Museum] ${sign} ${exhibit.title}: ${action} ${placed}/${total}`, color);
+  const color = modeLabel === 'unbuild' ? 'yellow' : 'aqua';
+  const percent = total > 0 ? Math.floor((placed / total) * 100) : 0;
+  return tellraw(`[SAM Museum] ${shortTitle(exhibit)} ${action}: ${percent}%`, color);
 }
 
 class RconClient {
@@ -466,23 +466,14 @@ async function setupSidebar(rcon) {
 async function updateSidebar(rcon, {
   exhibit = null,
   phase = 'Idle',
-  placed = 0,
-  total = 0,
   nextTitle = 'loading',
-  cycleCount = 0
 } = {}) {
   const now = exhibit ? shortTitle(exhibit) : 'loading';
-  const pct = total > 0 ? `${Math.floor((placed / total) * 100)}%` : '0%';
   const lines = [
-    ['SAM Museum', 90],
-    [`Now: ${now}`, 80],
-    [`Phase: ${phase}`, 70],
-    [`Progress: ${pct} ${formatCount(placed)}/${formatCount(total)}`, 60],
-    [`Next: ${shortTitle(nextTitle)}`, 50],
-    [`Agents: ${GUIDE_AGENT_COUNT} guides`, 40],
-    [`Show #: ${cycleCount}`, 30],
-    ['Type: tour', 20],
-    ['Request board: spawn', 10]
+    [`Now:${now}`, 40],
+    [`Mode:${phase}`, 30],
+    [`Next:${shortTitle(nextTitle)}`, 20],
+    ['Chat:tour', 10]
   ];
   await rcon.send('scoreboard players reset * sam_museum');
   for (const [label, score] of lines) {
@@ -595,6 +586,7 @@ async function sendBlockBatch(rcon, limiter, commands) {
 
 async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null, context = {}) {
   let placed = 0;
+  let midpointSent = false;
   for (let index = 0; index < blocks.length; index += config.batchSize) {
     const batch = blocks.slice(index, index + config.batchSize)
       .map((block) => setblockCommand(block, stateOverride || block.state));
@@ -603,16 +595,9 @@ async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverr
     if (placed % 1000 < config.batchSize) {
       console.log(`${modeLabel} ${exhibit.id}: ${placed}/${blocks.length}`);
     }
-    if (placed % config.streamInterval < config.batchSize || placed === blocks.length) {
+    if (!midpointSent && placed >= Math.floor(blocks.length / 2)) {
+      midpointSent = true;
       await rcon.send(streamMessage(exhibit, modeLabel, placed, blocks.length));
-      await updateSidebar(rcon, {
-        exhibit,
-        phase: context.phase ?? modeLabel,
-        placed,
-        total: blocks.length,
-        nextTitle: context.nextTitle ?? 'pending',
-        cycleCount: context.cycleCount ?? 0
-      });
     }
   }
 }
@@ -643,40 +628,11 @@ async function announceShowCountdown(rcon, exhibit, nextTitle, cycleCount) {
   }
   await updateSidebar(rcon, {
     exhibit,
-    phase: `Show in ${config.showCountdownSeconds}s`,
-    placed: 0,
-    total: exhibit.blockCount,
-    nextTitle,
-    cycleCount
+    phase: 'Starting',
+    nextTitle
   });
-  await rcon.send(tellraw(`[SAM Museum] Scheduled show ${cycleCount}: ${exhibit.title} starts in ${config.showCountdownSeconds} seconds. Type "tour" for a guided route.`, 'gold'));
-  await rcon.send(titleCommand('title', 'Next SAM Museum Show', 'gold'));
-  await rcon.send(titleCommand('subtitle', `${exhibit.title} starts soon`, 'yellow'));
-  if (config.showCountdownSeconds > 10) {
-    await sleep((config.showCountdownSeconds - 10) * 1000);
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} starts in 10 seconds.`, 'yellow'));
-    await updateSidebar(rcon, {
-      exhibit,
-      phase: 'Show in 10s',
-      placed: 0,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
-    });
-    await sleep(5000);
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} starts in 5 seconds.`, 'red'));
-    await updateSidebar(rcon, {
-      exhibit,
-      phase: 'Show in 5s',
-      placed: 0,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
-    });
-    await sleep(5000);
-  } else {
-    await sleep(config.showCountdownSeconds * 1000);
-  }
+  await rcon.send(tellraw(`[SAM Museum] Next show: ${shortTitle(exhibit)}.`, 'gold'));
+  await sleep(config.showCountdownSeconds * 1000);
 }
 
 async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
@@ -687,50 +643,36 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Dissolving',
-      placed: 0,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
+      nextTitle
     });
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is dissolving block by block.`, 'yellow'));
+    await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} dissolving.`, 'yellow'));
     await applyBlocks(rcon, limiter, exhibit, exhibit.unbuildBlocks, 'unbuild', 'minecraft:air', {
       phase: 'Dissolving',
-      nextTitle,
-      cycleCount
+      nextTitle
     });
     await updateSidebar(rcon, {
       exhibit,
-      phase: 'Empty hold',
-      placed: exhibit.blockCount,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
+      phase: 'Pause',
+      nextTitle
     });
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is cleared. Rebuild starts shortly.`, 'gray'));
+    await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} cleared.`, 'gray'));
     await sleep(config.emptyHoldMs);
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Rebuilding',
-      placed: 0,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
+      nextTitle
     });
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is rebuilding from lower layers upward.`, 'aqua'));
+    await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} rebuilding.`, 'aqua'));
     await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build', null, {
       phase: 'Rebuilding',
-      nextTitle,
-      cycleCount
+      nextTitle
     });
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Complete',
-      placed: exhibit.blockCount,
-      total: exhibit.blockCount,
-      nextTitle,
-      cycleCount
+      nextTitle
     });
-    await rcon.send(tellraw(`[SAM Museum] ${exhibit.title} is complete again.`, 'green'));
+    await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} complete.`, 'green'));
     await rcon.send(forceloadCommand(exhibit, 'remove'));
     await sleep(config.builtHoldMs);
   } catch (error) {

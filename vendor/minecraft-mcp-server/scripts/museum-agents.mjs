@@ -2,8 +2,8 @@ import mineflayer from 'mineflayer';
 
 const host = process.env.MC_HOST || 'localhost';
 const port = Number(process.env.MC_PORT || 25565);
-const CHATTER_LINES_PER_AGENT = 50;
-const CHATTER_INTERVAL_MS = 6500;
+const CHATTER_LINES_PER_AGENT = Number(process.env.AGENT_CHATTER_LINES || 10);
+const CHATTER_INTERVAL_MS = Number(process.env.AGENT_CHATTER_INTERVAL_MS || 30000);
 const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 const TOUR_STOP_PAUSE_MS = 9000;
@@ -228,7 +228,7 @@ function responseFor(agent, username, message) {
     return `${username}, say "tour" and I will move you through the museum stops. From the overlook, the row is Sydney, Arc, Munich, Eiffel, Saint Basil's, then Chrysler.`;
   }
   if (text.includes('agents') || text.includes('help') || text.includes('team')) {
-    return `${username}, six guide agents are online: Orchestrator (${agents[0].model}), Design Dora (${agents[1].model}), Build Bea (${agents[2].model}), Monument Marc (${agents[3].model}), Supply Sid (${agents[4].model}), and Forest Finn (${agents[5].model}).`;
+    return `${username}, six guide agents are online: Orchestrator, Design Dora, Build Bea, Monument Marc, Supply Sid, and Forest Finn. Ask any of us for a tour or a landmark detail.`;
   }
   if (text.includes('alive') || text.includes('move') || text.includes('walking')) {
     return `${username}, each guide is cycling through exhibit waypoints while the six landmarks dissolve and rebuild in staggered phases.`;
@@ -308,14 +308,12 @@ function isSafePlayerName(username) {
 }
 
 async function styleAgent(bot, agent) {
-  for (const current of agents) {
-    bot.chat(`/team add ${current.team}`);
-    await sleep(70);
-    bot.chat(`/team modify ${current.team} color ${current.teamColor}`);
-    await sleep(70);
-    bot.chat(`/team modify ${current.team} prefix ${chatComponent(`[${current.badge}] `, current.teamColor)}`);
-    await sleep(70);
-  }
+  bot.chat(`/team add ${agent.team}`);
+  await sleep(70);
+  bot.chat(`/team modify ${agent.team} color ${agent.teamColor}`);
+  await sleep(70);
+  bot.chat(`/team modify ${agent.team} prefix ${chatComponent(`[${agent.badge}] `, agent.teamColor)}`);
+  await sleep(70);
   bot.chat(`/team join ${agent.team} ${agent.username}`);
   await sleep(100);
   bot.chat(`/item replace entity ${agent.username} armor.head with ${agent.armor.head}`);
