@@ -101,8 +101,12 @@ const CLEAN_REPLACEMENTS = new Map([
   ['minecraft:piston', 'minecraft:smooth_stone'],
   ['minecraft:sticky_piston', 'minecraft:smooth_stone'],
   ['minecraft:hopper', 'minecraft:iron_block'],
-  ['minecraft:redstone_block', 'minecraft:red_concrete'],
+  ['minecraft:redstone_block', 'minecraft:smooth_quartz'],
   ['minecraft:redstone_lamp', 'minecraft:sea_lantern'],
+  ['minecraft:redstone_torch', 'minecraft:smooth_stone'],
+  ['minecraft:redstone_wall_torch', 'minecraft:smooth_stone'],
+  ['minecraft:target', 'minecraft:smooth_stone'],
+  ['minecraft:daylight_detector', 'minecraft:smooth_stone'],
   ['minecraft:command_block', 'minecraft:smooth_quartz'],
   ['minecraft:chain_command_block', 'minecraft:smooth_quartz'],
   ['minecraft:repeating_command_block', 'minecraft:smooth_quartz'],
@@ -134,7 +138,34 @@ const config = {
   saveAfterRestore: process.env.MUSEUM_SAVE_AFTER_RESTORE !== '0'
 };
 
-const GUIDE_AGENT_COUNT = 6;
+const AGENT_USERNAMES = [
+  'OrchGuide_o11',
+  'DesignDora_l4s',
+  'BuildBea_l33',
+  'MonumentMarc_m9',
+  'SupplySid_l31',
+  'ForestFinn_q32'
+];
+const AGENT_MOVE_BLOCK_INTERVAL = positiveInteger(process.env.MUSEUM_AGENT_MOVE_BLOCK_INTERVAL, 120);
+const FILL_CHUNK_SIZE = 28;
+const REDSTONE_WORLD_REPLACEMENTS = [
+  ['minecraft:redstone_block', 'minecraft:smooth_quartz'],
+  ['minecraft:redstone_ore', 'minecraft:stone'],
+  ['minecraft:deepslate_redstone_ore', 'minecraft:deepslate'],
+  ['minecraft:redstone_wire', 'minecraft:smooth_stone'],
+  ['minecraft:repeater', 'minecraft:smooth_stone'],
+  ['minecraft:comparator', 'minecraft:smooth_stone'],
+  ['minecraft:redstone_torch', 'minecraft:smooth_stone'],
+  ['minecraft:redstone_wall_torch', 'minecraft:smooth_stone'],
+  ['minecraft:redstone_lamp', 'minecraft:sea_lantern'],
+  ['minecraft:observer', 'minecraft:light_gray_concrete'],
+  ['minecraft:dispenser', 'minecraft:smooth_stone'],
+  ['minecraft:dropper', 'minecraft:smooth_stone'],
+  ['minecraft:piston', 'minecraft:smooth_stone'],
+  ['minecraft:sticky_piston', 'minecraft:smooth_stone'],
+  ['minecraft:target', 'minecraft:smooth_stone'],
+  ['minecraft:daylight_detector', 'minecraft:smooth_stone']
+];
 const REQUEST_BOARD = {
   x1: -26,
   y1: 78,
@@ -176,6 +207,10 @@ function positiveInteger(value, fallback) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
 }
 
 function readUInt32LE(buffer, offset) {
@@ -235,6 +270,9 @@ function cleanState(rawState) {
     return 'minecraft:smooth_stone';
   }
   if (/^minecraft:(redstone_wire|repeater|comparator|lever|tripwire|tripwire_hook)(\[.*)?$/.test(rawState)) {
+    return 'minecraft:smooth_stone';
+  }
+  if (blockName.includes('redstone')) {
     return 'minecraft:smooth_stone';
   }
   return rawState;
@@ -514,6 +552,30 @@ async function setupRequestBoard(rcon) {
   );
 }
 
+async function fillReplaceChunked(rcon, bounds, fromBlock, toBlock) {
+  for (let x = bounds.minX; x <= bounds.maxX; x += FILL_CHUNK_SIZE) {
+    const x2 = Math.min(bounds.maxX, x + FILL_CHUNK_SIZE - 1);
+    for (let y = bounds.minY; y <= bounds.maxY; y += FILL_CHUNK_SIZE) {
+      const y2 = Math.min(bounds.maxY, y + FILL_CHUNK_SIZE - 1);
+      for (let z = bounds.minZ; z <= bounds.maxZ; z += FILL_CHUNK_SIZE) {
+        const z2 = Math.min(bounds.maxZ, z + FILL_CHUNK_SIZE - 1);
+        await rcon.send(`fill ${x} ${y} ${z} ${x2} ${y2} ${z2} ${toBlock} replace ${fromBlock}`);
+      }
+    }
+  }
+}
+
+async function sanitizeRedstoneBlocks(rcon, exhibits) {
+  for (const exhibit of exhibits) {
+    await rcon.send(forceloadCommand(exhibit, 'add'));
+    for (const [fromBlock, toBlock] of REDSTONE_WORLD_REPLACEMENTS) {
+      await fillReplaceChunked(rcon, exhibit.bounds, fromBlock, toBlock);
+    }
+    await rcon.send(forceloadCommand(exhibit, 'remove'));
+  }
+  await rcon.send(tellraw('[SAM Museum] Redstone cleanup applied across the live exhibit models.', 'gray'));
+}
+
 async function setupVisitorFeatures(rcon, exhibits) {
   await rcon.send('gamerule sendCommandFeedback false');
   await rcon.send('gamerule logAdminCommands false');
@@ -526,6 +588,7 @@ async function setupVisitorFeatures(rcon, exhibits) {
     nextTitle: exhibits[1]?.title ?? 'Sydney'
   });
   await setupRequestBoard(rcon);
+  await sanitizeRedstoneBlocks(rcon, exhibits);
   await rcon.send(tellraw('[SAM Museum] Visitor features online: sidebar status, guided tour command, request board, and scheduled shows.', 'gold'));
 }
 
@@ -584,15 +647,67 @@ async function sendBlockBatch(rcon, limiter, commands) {
   }
 }
 
+function agentPositionsFor(exhibit, focusBlock) {
+  const midX = Math.floor((exhibit.bounds.minX + exhibit.bounds.maxX) / 2);
+  const midZ = Math.floor((exhibit.bounds.minZ + exhibit.bounds.maxZ) / 2);
+  const focus = focusBlock || {
+    x: midX,
+    y: exhibit.bounds.minY + 6,
+    z: midZ
+  };
+  const southZ = exhibit.bounds.minZ - 6;
+  const northZ = exhibit.bounds.maxZ + 6;
+  const y = clamp(focus.y + 2, exhibit.bounds.minY + 3, exhibit.bounds.maxY + 3);
+  const xMin = exhibit.bounds.minX - 8;
+  const xMax = exhibit.bounds.maxX + 8;
+  const base = [
+    { x: focus.x - 12, z: southZ },
+    { x: focus.x - 4, z: southZ },
+    { x: focus.x + 4, z: southZ },
+    { x: focus.x + 12, z: southZ },
+    { x: focus.x - 7, z: northZ },
+    { x: focus.x + 7, z: northZ }
+  ];
+  return base.map((position) => ({
+    x: clamp(position.x, xMin, xMax),
+    y,
+    z: position.z
+  }));
+}
+
+async function moveAgentsToWorkZone(rcon, exhibit, focusBlock) {
+  const focus = focusBlock || {
+    x: Math.floor((exhibit.bounds.minX + exhibit.bounds.maxX) / 2),
+    y: exhibit.bounds.minY + 6,
+    z: Math.floor((exhibit.bounds.minZ + exhibit.bounds.maxZ) / 2)
+  };
+  const positions = agentPositionsFor(exhibit, focus);
+  for (let index = 0; index < AGENT_USERNAMES.length; index += 1) {
+    const username = AGENT_USERNAMES[index];
+    const position = positions[index % positions.length];
+    await rcon.send(`effect give ${username} minecraft:glowing 999999 0 true`);
+    await rcon.send(`effect give ${username} minecraft:slow_falling 45 0 true`);
+    await rcon.send(
+      `tp ${username} ${position.x} ${position.y} ${position.z} ` +
+      `facing ${focus.x} ${focus.y} ${focus.z}`
+    );
+  }
+}
+
 async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null, context = {}) {
   let placed = 0;
   const progressMilestones = modeLabel === 'restore' ? [] : [25, 50, 75];
   let nextMilestoneIndex = 0;
+  let nextAgentMoveAt = 0;
   for (let index = 0; index < blocks.length; index += config.batchSize) {
-    const batch = blocks.slice(index, index + config.batchSize)
-      .map((block) => setblockCommand(block, stateOverride || block.state));
+    const rawBatch = blocks.slice(index, index + config.batchSize);
+    const batch = rawBatch.map((block) => setblockCommand(block, stateOverride || block.state));
     await sendBlockBatch(rcon, limiter, batch);
     placed += batch.length;
+    if (placed >= nextAgentMoveAt) {
+      await moveAgentsToWorkZone(rcon, exhibit, rawBatch[rawBatch.length - 1]);
+      nextAgentMoveAt = placed + AGENT_MOVE_BLOCK_INTERVAL;
+    }
     const percent = blocks.length > 0 ? Math.floor((placed / blocks.length) * 100) : 100;
     if (
       nextMilestoneIndex < progressMilestones.length &&
@@ -646,6 +761,7 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
     console.log(`Starting animation cycle for ${exhibit.title}`);
     await announceShowCountdown(rcon, exhibit, nextTitle, cycleCount);
     await rcon.send(forceloadCommand(exhibit, 'add'));
+    await moveAgentsToWorkZone(rcon, exhibit, exhibit.unbuildBlocks[0]);
     await updateSidebar(rcon, {
       exhibit,
       phase: 'Dissolving',
@@ -671,6 +787,7 @@ async function runExhibitCycle(rcon, limiter, exhibit, nextTitle, cycleCount) {
       phase: 'Rebuilding',
       nextTitle
     });
+    await moveAgentsToWorkZone(rcon, exhibit, exhibit.buildBlocks[0]);
     await rcon.send(tellraw(`[SAM Museum] ${shortTitle(exhibit)} rebuilding.`, 'aqua'));
     const built = await applyBlocks(rcon, limiter, exhibit, exhibit.buildBlocks, 'build', null, {
       phase: 'Rebuilding',

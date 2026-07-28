@@ -5,6 +5,7 @@ const port = Number(process.env.MC_PORT || 25565);
 const CHATTER_LINES_PER_AGENT = Number(process.env.AGENT_CHATTER_LINES || 0);
 const CHATTER_INTERVAL_MS = Number(process.env.AGENT_CHATTER_INTERVAL_MS || 30000);
 const RESPONSE_COOLDOWN_MS = Number(process.env.AGENT_RESPONSE_COOLDOWN_MS || 5000);
+const SELF_PATROL_ENABLED = process.env.AGENT_SELF_PATROL === '1';
 const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 const TOUR_STOP_PAUSE_MS = 9000;
@@ -403,11 +404,13 @@ function createAgent(agent, index) {
     bot.chat(`/effect give ${agent.username} minecraft:glowing 999999 0 true`);
     await styleAgent(bot, agent);
     await sleep(300);
-    bot.chat(`${agent.label} online: ${agent.role}, model=${agent.model}. I am patrolling the origin museum cluster.`);
+    bot.chat(`${agent.label} online: ${agent.role}, model=${agent.model}. I am tracking the active museum build.`);
     startChatter(bot, agent, index, () => active);
-    startMovement(bot, agent, index, () => active).catch((error) => {
-      console.error(`${agent.username} movement loop`, error.message);
-    });
+    if (SELF_PATROL_ENABLED) {
+      startMovement(bot, agent, index, () => active).catch((error) => {
+        console.error(`${agent.username} movement loop`, error.message);
+      });
+    }
   });
 
   bot.on('chat', async (username, message) => {
