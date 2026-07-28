@@ -148,6 +148,14 @@ const AGENT_USERNAMES = [
 ];
 const AGENT_MOVE_BLOCK_INTERVAL = positiveInteger(process.env.MUSEUM_AGENT_MOVE_BLOCK_INTERVAL, 120);
 const FILL_CHUNK_SIZE = 28;
+const STRAY_REDSTONE_CLEANUP_BOUNDS = {
+  minX: -300,
+  maxX: 330,
+  minY: 60,
+  maxY: 190,
+  minZ: -260,
+  maxZ: 100
+};
 const REDSTONE_WORLD_REPLACEMENTS = [
   ['minecraft:redstone_block', 'minecraft:smooth_quartz'],
   ['minecraft:redstone_ore', 'minecraft:stone'],
@@ -573,7 +581,13 @@ async function sanitizeRedstoneBlocks(rcon, exhibits) {
     }
     await rcon.send(forceloadCommand(exhibit, 'remove'));
   }
-  await rcon.send(tellraw('[SAM Museum] Redstone cleanup applied across the live exhibit models.', 'gray'));
+  await fillReplaceChunked(
+    rcon,
+    STRAY_REDSTONE_CLEANUP_BOUNDS,
+    'minecraft:redstone_block',
+    'minecraft:air'
+  );
+  await rcon.send(tellraw('[SAM Museum] Redstone cleanup applied across the museum area.', 'gray'));
 }
 
 async function setupVisitorFeatures(rcon, exhibits) {
