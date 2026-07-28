@@ -93,7 +93,10 @@ function renderDynamic(dynamic) {
 }
 
 function renderAccess(config) {
-  const serverAddress = `${config.minecraft.host}:${config.minecraft.port}`;
+  const port = String(config.minecraft.port || '').trim();
+  const serverAddress = port && port !== '25565'
+    ? `${config.minecraft.host}:${port}`
+    : config.minecraft.host;
   const museumAddress = document.querySelector('#museum-address');
   const chatAddress = document.querySelector('#chat-address');
   const copyServer = document.querySelector('#copy-server');

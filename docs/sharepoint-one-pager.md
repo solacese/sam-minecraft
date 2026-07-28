@@ -4,8 +4,8 @@
 
 | Resource | Address |
 |---|---|
-| Website | `https://raphael-solace.github.io/sam-minecraft-museum/` |
-| Minecraft server | `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565` |
+| Website | `https://museum.sol-se-emea.com/` |
+| Minecraft server | `sol-se-emea.com` |
 | Agent chat | In-game chat |
 | Requests | Use the website request form |
 
@@ -42,6 +42,6 @@ The demo shows multi-agent coordination in a simple way: planning, specialist ro
 
 1. Open Minecraft Java Edition 1.21.4.
 2. Go to Multiplayer.
-3. Add server: `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
+3. Add server: `sol-se-emea.com`.
 4. Join the world.
 5. Ask the guide agents for a tour.

@@ -4,10 +4,11 @@ const host = process.env.MC_HOST || 'localhost';
 const port = Number(process.env.MC_PORT || 25565);
 const CHATTER_LINES_PER_AGENT = Number(process.env.AGENT_CHATTER_LINES || 0);
 const CHATTER_INTERVAL_MS = Number(process.env.AGENT_CHATTER_INTERVAL_MS || 30000);
+const RESPONSE_COOLDOWN_MS = Number(process.env.AGENT_RESPONSE_COOLDOWN_MS || 5000);
 const MOVEMENT_PAUSE_MS = 9000;
 const PATROL_Y = Number(process.env.AGENT_PATROL_Y || 79);
 const TOUR_STOP_PAUSE_MS = 9000;
-const MUSEUM_PAGE_URL = 'https://raphael-solace.github.io/sam-minecraft-museum/#visit';
+const MUSEUM_PAGE_URL = 'https://museum.sol-se-emea.com/#visit';
 
 const waypoints = [
   { label: 'spawn overlook', x: 0, z: -210 },
@@ -164,8 +165,16 @@ const tourStops = [
 ];
 
 const activeTours = new Set();
+const lastResponseAt = new Map();
 
 const agentNames = new Set(agents.map((agent) => agent.username.toLowerCase()));
+const ignoredChatSenders = new Set([
+  ...agentNames,
+  ...agents.map((agent) => agent.badge.toLowerCase()),
+  'museum',
+  'sam',
+  'server'
+]);
 const chatterTemplates = [
   'checking sightlines around {place}',
   'marking visitor flow from {place}',
@@ -197,6 +206,15 @@ function normalize(message) {
   return message.toLowerCase().replace(/[^a-z0-9\s]/g, ' ');
 }
 
+function isAgentChatSender(username) {
+  const lower = String(username || '').toLowerCase();
+  if ([...agentNames].some((agentName) => lower.includes(agentName))) {
+    return true;
+  }
+  const tokens = normalize(lower).split(/\s+/).filter(Boolean);
+  return tokens.some((token) => ignoredChatSenders.has(token));
+}
+
 function addressedTo(agent, text) {
   const labelTokens = agent.label.toLowerCase().split(/\s+/);
   return [...agent.aliases, ...labelTokens, agent.username.toLowerCase()]
@@ -207,19 +225,35 @@ function addressedAgents(text) {
   return agents.filter((agent) => addressedTo(agent, text));
 }
 
-function shouldRespond(agent, message) {
+function responderFor(message) {
   const text = normalize(message);
   const addressed = addressedAgents(text);
-  if (addressed.length > 0) {
-    return addressed.some((target) => target.username === agent.username);
+  if (addressed.length === 1) {
+    return addressed[0].username;
   }
-  if (/\b(all|everyone|team|agents|guides)\b/.test(text)) {
-    return true;
+  if (addressed.length > 1 || /\b(all|everyone|team|agents|guides|help|tour|where|request|vote)\b/.test(text)) {
+    return 'OrchGuide_o11';
   }
-  if ([...agent.topics].some((topic) => text.includes(topic))) {
-    return true;
+  const specialist = agents.find((candidate) => (
+    candidate.username !== 'OrchGuide_o11' &&
+    candidate.topics.some((topic) => text.includes(topic))
+  ));
+  return specialist?.username || 'OrchGuide_o11';
+}
+
+function shouldRespond(agent, message) {
+  return responderFor(message) === agent.username;
+}
+
+function canRespondTo(username, message) {
+  const now = Date.now();
+  const key = `${String(username || '').toLowerCase()}:${normalize(message).slice(0, 80)}`;
+  const previous = lastResponseAt.get(key) || 0;
+  if (now - previous < RESPONSE_COOLDOWN_MS) {
+    return false;
   }
-  return agent.username === 'OrchGuide_o11' && text.trim().length > 0;
+  lastResponseAt.set(key, now);
+  return true;
 }
 
 function responseFor(agent, username, message) {
@@ -377,10 +411,13 @@ function createAgent(agent, index) {
   });
 
   bot.on('chat', async (username, message) => {
-    if (!username || agentNames.has(username.toLowerCase())) {
+    if (!username || isAgentChatSender(username)) {
       return;
     }
     if (!shouldRespond(agent, message)) {
+      return;
+    }
+    if (!canRespondTo(username, message)) {
       return;
     }
     await sleep(250 + index * 150);

@@ -1,7 +1,14 @@
 # Production museum runtime: public Minecraft server plus scripted in-game guide agents.
+x-logging: &museum-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   mc:
     image: itzg/minecraft-server:java21
+    logging: *museum-logging
     tty: true
     stdin_open: true
     restart: unless-stopped
@@ -34,6 +41,7 @@ services:
 
   museum-agents:
     image: node:22-bookworm-slim
+    logging: *museum-logging
     restart: unless-stopped
     working_dir: /app/vendor/minecraft-mcp-server
     depends_on:
@@ -52,6 +60,7 @@ services:
 
   museum-builder:
     image: node:22-bookworm-slim
+    logging: *museum-logging
     restart: unless-stopped
     working_dir: /app/vendor/minecraft-mcp-server
     depends_on:

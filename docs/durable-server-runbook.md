@@ -3,7 +3,7 @@
 ## Target Experience
 
 - Public museum website on GitHub Pages.
-- Always-on Minecraft Java server at `ec2-16-54-209-252.ca-central-1.compute.amazonaws.com:25565`.
+- Always-on Minecraft Java server at `sol-se-emea.com`.
 - Agent chat through scripted in-game guide agents.
 - Public build requests through a queue, not direct world mutation.
 - A normal, non-flat baseline museum world with six close, high-quality OTS-backed exhibits: Sydney Opera House, Arc de Triomphe, Munich Famous Building, Eiffel Tower, Saint Basil's Cathedral, and NY Chrysler Building.

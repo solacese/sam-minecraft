@@ -1,14 +1,14 @@
 {
   "urls": {
-    "museum": "https://raphael-solace.github.io/sam-minecraft-museum/",
-    "museumLabel": "raphael-solace.github.io/sam-minecraft-museum",
-    "chat": "https://raphael-solace.github.io/sam-minecraft-museum/#agents",
+    "museum": "https://museum.sol-se-emea.com/",
+    "museumLabel": "museum.sol-se-emea.com",
+    "chat": "https://museum.sol-se-emea.com/#agents",
     "chatLabel": "In-game guide agents"
   },
   "minecraft": {
-    "host": "ec2-16-54-209-252.ca-central-1.compute.amazonaws.com",
+    "host": "sol-se-emea.com",
     "port": "25565",
-    "note": "Join with Minecraft Java 1.21.4. Six landmarks rebuild live, and guide agents answer in chat."
+    "note": "Join with Minecraft Java 1.21.4 at sol-se-emea.com. Six landmarks rebuild live, and guide agents answer in chat."
   },
   "dynamic": {
     "status": "Live build loop",

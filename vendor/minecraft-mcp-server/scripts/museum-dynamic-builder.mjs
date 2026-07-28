@@ -586,11 +586,21 @@ async function sendBlockBatch(rcon, limiter, commands) {
 
 async function applyBlocks(rcon, limiter, exhibit, blocks, modeLabel, stateOverride = null, context = {}) {
   let placed = 0;
+  const progressMilestones = modeLabel === 'restore' ? [] : [25, 50, 75];
+  let nextMilestoneIndex = 0;
   for (let index = 0; index < blocks.length; index += config.batchSize) {
     const batch = blocks.slice(index, index + config.batchSize)
       .map((block) => setblockCommand(block, stateOverride || block.state));
     await sendBlockBatch(rcon, limiter, batch);
     placed += batch.length;
+    const percent = blocks.length > 0 ? Math.floor((placed / blocks.length) * 100) : 100;
+    if (
+      nextMilestoneIndex < progressMilestones.length &&
+      percent >= progressMilestones[nextMilestoneIndex]
+    ) {
+      await rcon.send(streamMessage(exhibit, modeLabel, placed, blocks.length));
+      nextMilestoneIndex += 1;
+    }
     if (placed % 1000 < config.batchSize) {
       console.log(`${modeLabel} ${exhibit.id}: ${placed}/${blocks.length}`);
     }
